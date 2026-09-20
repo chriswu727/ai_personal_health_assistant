@@ -4,10 +4,12 @@ This package depends on the standard library only. It contains no HTTP client,
 database session, model SDK, or user interface code.
 """
 
+from health_assistant.domain.actions import ApprovedAction, OperationKind
 from health_assistant.domain.approvals import (
     Approval,
     authorize_execution,
     fingerprint_items,
+    fingerprint_scope,
     grant_approval,
     validation_report_for,
 )
@@ -31,10 +33,10 @@ from health_assistant.domain.identifiers import (
 from health_assistant.domain.operations import (
     ALLOWED_TRANSITIONS,
     Lease,
-    OperationKind,
     OperationState,
     ProviderOutcome,
     ToolOperation,
+    authorize_operation,
     cancel,
     claim,
     confirm,
@@ -72,6 +74,7 @@ __all__ = [
     "AddItem",
     "Approval",
     "ApprovalId",
+    "ApprovedAction",
     "Clock",
     "CompletionStatus",
     "Constraint",
@@ -102,11 +105,13 @@ __all__ = [
     "ValidationOutcome",
     "ValidationReport",
     "authorize_execution",
+    "authorize_operation",
     "cancel",
     "claim",
     "confirm",
     "expire_lease",
     "fingerprint_items",
+    "fingerprint_scope",
     "grant_approval",
     "normalize_token",
     "propose",

@@ -19,11 +19,14 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
 
+from health_assistant.domain.actions import ApprovedAction, OperationKind
 from health_assistant.domain.approvals import Approval, authorize_execution, fingerprint_items
 from health_assistant.domain.errors import (
     InvalidTransitionError,
     LeaseHeldError,
     LeaseNotHeldError,
+    OperationIdentityError,
+    OwnershipError,
     ReconciliationRequiredError,
     RetryBudgetExhaustedError,
     ValidationError,
@@ -49,12 +52,6 @@ class OperationState(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     OUTCOME_UNKNOWN = "outcome_unknown"
-
-
-class OperationKind(StrEnum):
-    CREATE_EVENT = "create_event"
-    UPDATE_EVENT = "update_event"
-    CANCEL_EVENT = "cancel_event"
 
 
 TERMINAL_STATES = frozenset({OperationState.SUCCEEDED, OperationState.CANCELLED})
@@ -172,6 +169,55 @@ def _ensure_transition(operation: ToolOperation, target: OperationState) -> None
         raise InvalidTransitionError(str(operation.state), str(target))
 
 
+def _require_state(
+    operation: ToolOperation, expected: OperationState, target: OperationState
+) -> None:
+    """Raise unless the operation is in the one state this transition starts from.
+
+    Several states can legitimately reach the same target: both confirmation and
+    a retry reach ``QUEUED``. Checking the transition table alone would therefore
+    let one entry point perform another's transition and skip its checks.
+    """
+    if operation.state is not expected:
+        raise InvalidTransitionError(str(operation.state), str(target))
+    _ensure_transition(operation, target)
+
+
+def authorize_operation(
+    operation: ToolOperation, *, approval: Approval, plan: PlanVersion, now: datetime
+) -> None:
+    """Raise unless operation, plan, and approval all describe one authorized proposal.
+
+    Matching identifiers are not enough on their own: two users' plans can both
+    be at version 1 and both contain an item called ``item-a``. Owner, plan,
+    version, item content, and the approved action are therefore all compared.
+    """
+    if not operation.owner_id == plan.owner_id == approval.owner_id:
+        raise OperationIdentityError("operation, plan, and approval have different owners")
+    if not operation.plan_id == plan.plan_id == approval.plan_id:
+        raise OperationIdentityError("operation, plan, and approval refer to different plans")
+    if not operation.plan_version == plan.version == approval.plan_version:
+        raise OperationIdentityError(
+            f"operation covers plan version {operation.plan_version}, the plan is at "
+            f"{plan.version}, and the approval covers {approval.plan_version}"
+        )
+
+    item = plan.item(operation.item_id)
+    expected_key = derive_idempotency_key(operation.operation_id, fingerprint_items([item]))
+    if expected_key != operation.idempotency_key:
+        raise OperationIdentityError(
+            "plan item content differs from the proposal this operation was derived from"
+        )
+
+    authorize_execution(
+        approval,
+        plan=plan,
+        actions=frozenset({ApprovedAction(item_id=operation.item_id, kind=operation.kind)}),
+        actor_id=operation.owner_id,
+        now=now,
+    )
+
+
 def propose(
     *,
     operation_id: OperationId,
@@ -205,7 +251,7 @@ def propose(
 
 def request_confirmation(operation: ToolOperation, *, now: datetime) -> ToolOperation:
     """Present the proposal to the user and wait for an explicit decision."""
-    _ensure_transition(operation, OperationState.AWAITING_CONFIRMATION)
+    _require_state(operation, OperationState.PROPOSED, OperationState.AWAITING_CONFIRMATION)
     return replace(
         operation,
         state=OperationState.AWAITING_CONFIRMATION,
@@ -221,17 +267,11 @@ def confirm(
     actor_id: UserId,
     now: datetime,
 ) -> ToolOperation:
-    """Queue the operation only if the approval still authorizes this exact item."""
-    _ensure_transition(operation, OperationState.QUEUED)
-    if operation.plan_version != plan.version:
-        raise ValidationError("operation refers to a different plan version than the plan given")
-    authorize_execution(
-        approval,
-        plan=plan,
-        item_ids=frozenset({operation.item_id}),
-        actor_id=actor_id,
-        now=now,
-    )
+    """Queue the operation only if the approval still authorizes this exact action."""
+    _require_state(operation, OperationState.AWAITING_CONFIRMATION, OperationState.QUEUED)
+    if actor_id != operation.owner_id:
+        raise OwnershipError(f"user {actor_id!r} may not confirm this operation")
+    authorize_operation(operation, approval=approval, plan=plan, now=now)
     return replace(
         operation,
         state=OperationState.QUEUED,
@@ -243,12 +283,24 @@ def confirm(
 def claim(
     operation: ToolOperation,
     *,
+    approval: Approval,
+    plan: PlanVersion,
     worker_id: str,
     now: datetime,
     lease_duration: timedelta,
 ) -> ToolOperation:
-    """Take the operation for execution under a time-bounded lease."""
-    _ensure_transition(operation, OperationState.EXECUTING)
+    """Take the operation for execution under a time-bounded lease.
+
+    Authorization is revalidated here, not only when the operation was queued.
+    Time passes between the two, and a confirmation can expire or be revoked in
+    between; queued work is not a standing permission to write.
+    """
+    _require_state(operation, OperationState.QUEUED, OperationState.EXECUTING)
+    if operation.approval_id is None or operation.approval_id != approval.approval_id:
+        raise OperationIdentityError(
+            "the approval presented is not the one that queued this operation"
+        )
+    authorize_operation(operation, approval=approval, plan=plan, now=now)
     instant = require_utc(now, "now")
     held = operation.lease
     if held is not None and not held.is_expired_at(instant) and held.worker_id != worker_id:
@@ -266,7 +318,7 @@ def claim(
 
 def record_success(operation: ToolOperation, *, external_ref: str, now: datetime) -> ToolOperation:
     """Record a write the provider confirmed, together with its resource reference."""
-    _ensure_transition(operation, OperationState.SUCCEEDED)
+    _require_state(operation, OperationState.EXECUTING, OperationState.SUCCEEDED)
     if not external_ref.strip():
         raise ValidationError("a successful write must record the external reference")
     return replace(
@@ -281,7 +333,7 @@ def record_success(operation: ToolOperation, *, external_ref: str, now: datetime
 
 def record_failure(operation: ToolOperation, *, reason: str, now: datetime) -> ToolOperation:
     """Record a failure the provider confirmed, which may later be retried."""
-    _ensure_transition(operation, OperationState.FAILED)
+    _require_state(operation, OperationState.EXECUTING, OperationState.FAILED)
     return replace(
         operation,
         state=OperationState.FAILED,
@@ -295,7 +347,7 @@ def record_ambiguous_outcome(
     operation: ToolOperation, *, reason: str, now: datetime
 ) -> ToolOperation:
     """Record that the provider's response was lost, timed out, or unreadable."""
-    _ensure_transition(operation, OperationState.OUTCOME_UNKNOWN)
+    _require_state(operation, OperationState.EXECUTING, OperationState.OUTCOME_UNKNOWN)
     return replace(
         operation,
         state=OperationState.OUTCOME_UNKNOWN,
@@ -307,7 +359,7 @@ def record_ambiguous_outcome(
 
 def expire_lease(operation: ToolOperation, *, now: datetime) -> ToolOperation:
     """Release an expired lease without asserting that the external write failed."""
-    _ensure_transition(operation, OperationState.OUTCOME_UNKNOWN)
+    _require_state(operation, OperationState.EXECUTING, OperationState.OUTCOME_UNKNOWN)
     lease = operation.lease
     if lease is None:
         raise LeaseNotHeldError()
@@ -346,10 +398,15 @@ def reconcile(
 
 
 def retry(operation: ToolOperation, *, now: datetime) -> ToolOperation:
-    """Re-queue a confirmed failure, refusing to retry an unknown outcome."""
+    """Re-queue a confirmed failure, refusing to retry an unknown outcome.
+
+    Only a verified failure may be retried. Requeuing from any other state would
+    reach ``QUEUED`` without passing the confirmation checks that ``confirm``
+    performs.
+    """
     if operation.state is OperationState.OUTCOME_UNKNOWN:
         raise ReconciliationRequiredError()
-    _ensure_transition(operation, OperationState.QUEUED)
+    _require_state(operation, OperationState.FAILED, OperationState.QUEUED)
     if operation.attempts >= operation.retry_budget:
         raise RetryBudgetExhaustedError(operation.retry_budget)
     return replace(operation, state=OperationState.QUEUED, updated_at=require_utc(now, "now"))

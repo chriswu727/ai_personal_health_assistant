@@ -66,9 +66,9 @@ Scope: backend domain package, development tooling, offline tests, reproducible 
 | --- | --- | --- | --- | --- |
 | S1-01 | Runtime/tooling decision and package setup | Record supported Python version and strict type-checking choice; lock dependencies; document reproducible installation and verification commands | In Progress | Python 3.12 pinned in `.python-version`; `pyproject.toml` and `uv.lock`; rationale in [ADR 0001](decisions/0001-python-runtime-and-tooling.md) |
 | S1-02 | Typed plans and revisions | No framework/SDK dependencies in domain code; revisions preserve unrelated constraints and completed history; invalid input and stale edits are rejected | In Progress | `domain/plans.py`, `domain/constraints.py`, `domain/validation.py`; `tests/test_plans.py`, `tests/test_validation.py` |
-| S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | In Progress | `domain/approvals.py`; `tests/test_approvals.py` |
-| S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | In Progress | `domain/operations.py`; `tests/test_operations.py` |
-| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | In Progress | 79 offline tests with synthetic fixtures and an injected fixed clock; `tests/test_scenario_first_journey.py` covers the product-scope journey |
+| S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | In Progress | `domain/approvals.py`, `domain/actions.py`; `tests/test_approvals.py`. Scope binds an action per item and the fingerprint covers it ([ADR 0003](decisions/0003-authorization-boundary.md)) |
+| S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | In Progress | `domain/operations.py`; `tests/test_operations.py`. Each entry point names its source state, and authorization is revalidated when work is claimed |
+| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | In Progress | 93 offline tests with synthetic fixtures and an injected fixed clock; `tests/test_scenario_first_journey.py` covers the product-scope journey; four review findings have regression tests |
 | S1-06 | Local and CI quality gates | Documented commands run formatting checks, linting, strict type checking, tests, and package build with locked dependencies; the same checks pass locally and on standard GitHub-hosted `ubuntu-latest`; record results; no paid runners or paid API calls | In Progress | `scripts/verify.sh` and `.github/workflows/ci.yml` run identical commands; both the local run and the [CI run on `ubuntu-latest`](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35530164477) passed, recorded below |
 | S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | In Progress | README implementation section, updated architecture, [ADR 0001](decisions/0001-python-runtime-and-tooling.md) and [ADR 0002](decisions/0002-first-class-constraints.md) |
 
@@ -80,15 +80,36 @@ and clarification over silent relaxation (P08), but no entity or component owned
 that check. The reasoning and the alternatives considered are recorded in
 [ADR 0002](decisions/0002-first-class-constraints.md).
 
+### Review round 1
+
+Review of [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1)
+reported four P1 authorization defects. All four were reproduced against the
+reviewed commit before any change, and all four are now blocked with the
+legitimate path unaffected:
+
+| Finding | Reproduced behavior | Resolution |
+| --- | --- | --- |
+| `retry()` bypassed confirmation | Unconfirmed operation reached EXECUTING with `approval_id=None` | Each transition names its source state; `retry()` accepts only a verified failure |
+| Cross-owner confirmation | One user's approval queued another user's operation | `authorize_operation` compares owner, plan, version, and item content |
+| A create approval authorized a cancel | `cancel_event` queued under a `create_event` confirmation | Approval scope and fingerprint bind the action per item |
+| Expired approval still executed | Claimed at minute 31 under a 30-minute confirmation | Authorization is revalidated at the execution boundary |
+
+Reasoning and consequences are recorded in
+[ADR 0003](decisions/0003-authorization-boundary.md). The common cause was that
+each function validated only its own local preconditions, and the tests mirrored
+that shape rather than crossing entry points.
+
+### Verification
+
 Local verification, macOS 15.7.4 arm64, Python 3.12.13, Ruff 0.16.8, mypy 2.3.1,
 pytest 9.1.1, commit as reviewed on the branch:
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Format | `uv run ruff format --check .` | Pass, 32 files |
+| Format | `uv run ruff format --check .` | Pass, 37 files |
 | Lint | `uv run ruff check .` | Pass |
-| Types | `uv run mypy` | Pass, 19 source files, strict mode |
-| Tests | `uv run pytest` | Pass, 79 tests, offline |
+| Types | `uv run mypy` | Pass, 20 source files, strict mode |
+| Tests | `uv run pytest` | Pass, 93 tests, offline |
 | Build | `uv build` | Pass, sdist and wheel |
 
 The same six checks passed on a standard GitHub-hosted `ubuntu-latest` runner:

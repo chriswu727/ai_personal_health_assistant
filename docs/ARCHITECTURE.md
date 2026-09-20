@@ -62,14 +62,20 @@ data in `health_assistant.domain.operations.ALLOWED_TRANSITIONS`; persistence
 semantics remain proposed until Sprint 2.
 
 1. Persist a validated proposal and its exact payload version.
-2. Bind user confirmation to that version, operation scope, and expiration.
+2. Bind user confirmation to that version, the specific external action, the operation scope, and an expiration.
 3. Atomically record the executable operation and queue/outbox entry.
-4. Claim work with a lease and persist attempt metadata.
-5. Apply provider-supported idempotency or stable resource identifiers.
-6. On an ambiguous response, reconcile the provider state before retrying a write.
-7. Persist a verified result and expose structured status to the client.
+4. Revalidate authorization at the execution boundary before claiming work: a
+   confirmation can expire or be revoked while the operation sits in the queue.
+5. Claim work with a lease and persist attempt metadata.
+6. Apply provider-supported idempotency or stable resource identifiers.
+7. On an ambiguous response, reconcile the provider state before retrying a write.
+8. Persist a verified result and expose structured status to the client.
 
 Do not claim exactly-once delivery across a database and an external API. Design for at-least-once delivery with deduplication and reconciliation. An expired lease is not evidence that an external write failed. Cancellation after a confirmed remote write may require a separately authorized compensating action.
+
+An approval names the action it authorizes, not only the item, so a confirmation
+to create an event cannot authorize cancelling it; see
+[ADR 0003](decisions/0003-authorization-boundary.md).
 
 Calendar access defaults to an assistant-owned calendar and neutral event titles. Do not edit unrelated events. A changed proposal invalidates its earlier confirmation. Revoked credentials stop execution without retry storms.
 

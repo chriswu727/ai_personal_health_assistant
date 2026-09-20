@@ -11,3 +11,4 @@ to change its decision; a later record supersedes it and says so.
 | --- | --- | --- |
 | [0001](0001-python-runtime-and-tooling.md) | Python runtime and quality tooling | Accepted |
 | [0002](0002-first-class-constraints.md) | First-class constraints and deterministic pre-approval validation | Accepted |
+| [0003](0003-authorization-boundary.md) | Authorization is bound to the action and revalidated at execution | Accepted |

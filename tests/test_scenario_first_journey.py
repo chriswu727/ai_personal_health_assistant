@@ -10,6 +10,7 @@ from datetime import timedelta
 
 import pytest
 
+from health_assistant.domain.actions import OperationKind
 from health_assistant.domain.approvals import authorize_execution, grant_approval
 from health_assistant.domain.constraints import ConstraintKind
 from health_assistant.domain.errors import (
@@ -19,7 +20,6 @@ from health_assistant.domain.errors import (
 )
 from health_assistant.domain.identifiers import ApprovalId, OperationId, PlanItemId
 from health_assistant.domain.operations import (
-    OperationKind,
     OperationState,
     ProviderOutcome,
     claim,
@@ -45,6 +45,7 @@ from tests.support import (
     make_constraint_set,
     make_item,
     make_plan,
+    make_scope,
     window,
 )
 
@@ -81,7 +82,7 @@ def test_first_journey_recovers_from_an_ambiguous_calendar_write() -> None:
             approval_id=ApprovalId("approval-1"),
             plan=proposed,
             constraints=constraints,
-            scope=frozenset({WALK, DINNER}),
+            scope=make_scope("item-walk", "item-dinner"),
             actor_id=OWNER,
             now=at(),
             ttl=timedelta(minutes=30),
@@ -113,7 +114,7 @@ def test_first_journey_recovers_from_an_ambiguous_calendar_write() -> None:
         approval_id=ApprovalId("approval-1"),
         plan=corrected,
         constraints=constraints,
-        scope=frozenset({WALK}),
+        scope=make_scope("item-walk"),
         actor_id=OWNER,
         now=at(minutes=2),
         ttl=timedelta(minutes=30),
@@ -137,7 +138,12 @@ def test_first_journey_recovers_from_an_ambiguous_calendar_write() -> None:
 
     # 5. The provider response is lost after the write may already have landed.
     executing = claim(
-        operation, worker_id="worker-1", now=at(minutes=5), lease_duration=timedelta(minutes=5)
+        operation,
+        approval=approval,
+        plan=corrected,
+        worker_id="worker-1",
+        now=at(minutes=5),
+        lease_duration=timedelta(minutes=5),
     )
     unknown = record_ambiguous_outcome(executing, reason="provider timeout", now=at(minutes=6))
     with pytest.raises(ReconciliationRequiredError):
@@ -177,7 +183,7 @@ def test_first_journey_recovers_from_an_ambiguous_calendar_write() -> None:
         authorize_execution(
             approval,
             plan=adjusted,
-            item_ids=frozenset({WALK}),
+            actions=make_scope("item-walk"),
             actor_id=OWNER,
             now=at(minutes=10),
         )

@@ -7,6 +7,7 @@ so that test outcomes never depend on the wall clock.
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from health_assistant.domain.actions import ApprovedAction, OperationKind
 from health_assistant.domain.constraints import (
     Constraint,
     ConstraintKind,
@@ -116,3 +117,14 @@ def make_constraint_set(*constraints: Constraint, owner: UserId = OWNER) -> Cons
 
 
 EMPTY_CONSTRAINTS = make_constraint_set()
+
+
+def make_action(item_id: str, kind: OperationKind = OperationKind.CREATE_EVENT) -> ApprovedAction:
+    return ApprovedAction(item_id=PlanItemId(item_id), kind=kind)
+
+
+def make_scope(
+    *item_ids: str, kind: OperationKind = OperationKind.CREATE_EVENT
+) -> frozenset[ApprovedAction]:
+    """Return an approval scope covering one external action per named item."""
+    return frozenset(make_action(item_id, kind) for item_id in item_ids)

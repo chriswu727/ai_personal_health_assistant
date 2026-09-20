@@ -15,12 +15,12 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
 
 ## Latest change
 
-Implemented the first tested domain slice: typed immutable plan versions with
-revision rules, first-class constraints with deterministic pre-approval
-validation, approvals bound to an exact payload fingerprint, and an external
-operation state machine in which an unknown outcome must be reconciled before
-any retry. Added the packaging, lockfile, local verification script, CI
-workflow, MIT license, and two decision records.
+Implemented the first tested domain slice, then addressed four P1 authorization
+findings from the review of pull request #1: a retry path that reached the queue
+without confirmation, confirmation that did not compare operation and plan
+identity, approvals that named an item but not the action, and execution that
+was never reauthorized after queuing. See
+[ADR 0003](decisions/0003-authorization-boundary.md).
 
 The domain package imports the standard library only. There is still no
 application, API, database, user interface, model provider, or calendar
@@ -31,14 +31,15 @@ integration.
 Local run on macOS 15.7.4 arm64 with Python 3.12.13, Ruff 0.16.8, mypy 2.3.1,
 and pytest 9.1.1:
 
-- `uv run ruff format --check .`: passed, 32 files.
+- `uv run ruff format --check .`: passed, 37 files.
 - `uv run ruff check .`: passed.
-- `uv run mypy`: passed, 19 source files, strict mode.
-- `uv run pytest`: passed, 79 tests, offline with synthetic fixtures.
+- `uv run mypy`: passed, 20 source files, strict mode.
+- `uv run pytest`: passed, 93 tests, offline with synthetic fixtures.
 - `uv build`: passed, source distribution and wheel.
 
-The same checks passed on a standard GitHub-hosted `ubuntu-latest` runner:
-[CI run](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35530164477).
+All four reported findings were reproduced against the reviewed commit before
+any change and re-checked afterwards: each is now refused by a named domain
+error, while a legitimate claim still succeeds.
 
 Not run: any live provider call, and any persistence, concurrency, or recovery
 test against a real database. These results describe deterministic domain

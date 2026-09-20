@@ -1,9 +1,10 @@
-"""User confirmation bound to an exact payload, scope, and expiry.
+"""User confirmation bound to an exact payload, action, scope, and expiry.
 
-An approval authorizes external execution for named plan items at one plan
+An approval authorizes one named external action per plan item, at one plan
 version whose content hashes to a recorded fingerprint. Any later revision
 produces a new version, so an earlier confirmation can never authorize content
-the user did not see.
+the user did not see, and a confirmation to create an event never authorizes
+cancelling one.
 """
 
 import hashlib
@@ -12,8 +13,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
+from health_assistant.domain.actions import ApprovedAction
 from health_assistant.domain.constraints import ConstraintSet
 from health_assistant.domain.errors import (
+    ApprovalActionNotAuthorizedError,
     ApprovalExpiredError,
     ApprovalPayloadChangedError,
     ApprovalRevokedError,
@@ -35,38 +38,56 @@ from health_assistant.domain.scheduling import require_utc
 from health_assistant.domain.validation import ValidationReport, validate_plan
 
 
-def fingerprint_items(items: Iterable[PlanItem]) -> str:
-    """Return a stable SHA-256 digest over the user-visible content of ``items``.
+def _item_payload(item: PlanItem) -> dict[str, object]:
+    return {
+        "item_id": item.item_id,
+        "category": str(item.category),
+        "title": item.title,
+        "start": item.window.start.isoformat(),
+        "end": item.window.end.isoformat(),
+        "time_zone": item.window.time_zone,
+        "attributes": sorted(item.attributes),
+        "completion": str(item.completion),
+    }
 
-    Ordering of items and of attribute tokens must not change the digest, so the
-    same proposal always produces the same fingerprint on any machine.
-    """
-    payload = [
-        {
-            "item_id": item.item_id,
-            "category": str(item.category),
-            "title": item.title,
-            "start": item.window.start.isoformat(),
-            "end": item.window.end.isoformat(),
-            "time_zone": item.window.time_zone,
-            "attributes": sorted(item.attributes),
-            "completion": str(item.completion),
-        }
-        for item in sorted(items, key=lambda item: item.item_id)
-    ]
+
+def _digest(payload: object) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def fingerprint_items(items: Iterable[PlanItem]) -> str:
+    """Return a stable digest over the user-visible content of ``items``.
+
+    Ordering of items and of attribute tokens must not change the digest, so the
+    same proposal always produces the same fingerprint on any machine.
+    """
+    return _digest([_item_payload(item) for item in sorted(items, key=lambda item: item.item_id)])
+
+
+def fingerprint_scope(plan: PlanVersion, scope: Iterable[ApprovedAction]) -> str:
+    """Return a digest over both the approved content and the approved actions.
+
+    Including the action means a confirmation for one kind of external write
+    cannot be replayed to authorize a different one against the same item.
+    """
+    return _digest(
+        [
+            {"kind": str(action.kind), "item": _item_payload(plan.item(action.item_id))}
+            for action in sorted(scope)
+        ]
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Approval:
-    """A confirmation that is valid only for one payload at one version."""
+    """A confirmation valid only for named actions on one payload at one version."""
 
     approval_id: ApprovalId
     owner_id: UserId
     plan_id: PlanId
     plan_version: int
-    scope: frozenset[PlanItemId]
+    scope: frozenset[ApprovedAction]
     payload_fingerprint: str
     granted_at: datetime
     expires_at: datetime
@@ -81,13 +102,17 @@ class Approval:
         if self.revoked_at is not None:
             object.__setattr__(self, "revoked_at", require_utc(self.revoked_at, "revoked_at"))
         if not self.scope:
-            raise ValidationError("an approval must cover at least one plan item")
+            raise ValidationError("an approval must cover at least one action")
         if self.expires_at <= self.granted_at:
             raise ValidationError("approval expiry must follow the grant instant")
 
     @property
     def is_revoked(self) -> bool:
         return self.revoked_at is not None
+
+    @property
+    def item_ids(self) -> frozenset[PlanItemId]:
+        return frozenset(action.item_id for action in self.scope)
 
     def is_expired_at(self, instant: datetime) -> bool:
         return require_utc(instant, "instant") >= self.expires_at
@@ -103,7 +128,7 @@ def grant_approval(
     approval_id: ApprovalId,
     plan: PlanVersion,
     constraints: ConstraintSet,
-    scope: frozenset[PlanItemId],
+    scope: frozenset[ApprovedAction],
     actor_id: UserId,
     now: datetime,
     ttl: timedelta,
@@ -116,27 +141,27 @@ def grant_approval(
     if actor_id != plan.owner_id:
         raise OwnershipError(f"user {actor_id!r} may not approve plan {plan.plan_id!r}")
     if not scope:
-        raise ApprovalScopeError("approval scope must name at least one plan item")
+        raise ApprovalScopeError("approval scope must name at least one action")
+    if ttl <= timedelta(0):
+        raise ValidationError("approval ttl must be positive")
 
-    unknown = scope - plan.item_ids()
+    item_ids = frozenset(action.item_id for action in scope)
+    unknown = item_ids - plan.item_ids()
     if unknown:
         raise ApprovalScopeError(f"scope names items absent from this version: {sorted(unknown)}")
 
-    scoped_items = tuple(item for item in plan.items if item.item_id in scope)
+    scoped_items = tuple(item for item in plan.items if item.item_id in item_ids)
     reported = [item.item_id for item in scoped_items if item.is_reported]
     if reported:
         raise ApprovalScopeError(f"scope names items with reported outcomes: {sorted(reported)}")
 
-    report = validate_plan(plan, constraints, at=now).for_items(scope)
+    report = validate_plan(plan, constraints, at=now).for_items(item_ids)
     if report.is_blocking:
         details = "; ".join(
             f"{finding.item_id}: {finding.outcome} ({finding.detail})"
             for finding in report.blocking
         )
         raise PlanNotApprovableError(f"blocking constraint findings: {details}")
-
-    if ttl <= timedelta(0):
-        raise ValidationError("approval ttl must be positive")
 
     granted_at = require_utc(now, "now")
     return Approval(
@@ -145,7 +170,7 @@ def grant_approval(
         plan_id=plan.plan_id,
         plan_version=plan.version,
         scope=frozenset(scope),
-        payload_fingerprint=fingerprint_items(scoped_items),
+        payload_fingerprint=fingerprint_scope(plan, scope),
         granted_at=granted_at,
         expires_at=granted_at + ttl,
     )
@@ -155,11 +180,11 @@ def authorize_execution(
     approval: Approval,
     *,
     plan: PlanVersion,
-    item_ids: frozenset[PlanItemId],
+    actions: frozenset[ApprovedAction],
     actor_id: UserId,
     now: datetime,
 ) -> None:
-    """Raise unless ``approval`` still authorizes acting on ``item_ids``.
+    """Raise unless ``approval`` still authorizes every action in ``actions``.
 
     Checks run from cheapest and most specific to the content comparison, so the
     raised error names the actual reason rather than a generic failure.
@@ -174,13 +199,16 @@ def authorize_execution(
         raise ApprovalExpiredError()
     if approval.plan_version != plan.version:
         raise ApprovalVersionMismatchError(approved=approval.plan_version, requested=plan.version)
+    if not actions:
+        raise ApprovalScopeError("at least one action must be requested")
 
-    outside = item_ids - approval.scope
-    if outside:
-        raise ApprovalScopeError(f"items outside the approved scope: {sorted(outside)}")
+    for action in sorted(actions):
+        if action not in approval.scope:
+            if action.item_id in approval.item_ids:
+                raise ApprovalActionNotAuthorizedError(action.item_id, str(action.kind))
+            raise ApprovalScopeError(f"item outside the approved scope: {action.item_id!r}")
 
-    scoped_items = tuple(item for item in plan.items if item.item_id in approval.scope)
-    if fingerprint_items(scoped_items) != approval.payload_fingerprint:
+    if fingerprint_scope(plan, approval.scope) != approval.payload_fingerprint:
         raise ApprovalPayloadChangedError()
 
 

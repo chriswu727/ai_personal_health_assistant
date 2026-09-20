@@ -119,8 +119,24 @@ class ApprovalScopeError(ApprovalError):
         super().__init__(detail)
 
 
+class ApprovalActionNotAuthorizedError(ApprovalError):
+    """The approval covers the item but not the external action requested for it."""
+
+    def __init__(self, item_id: str, kind: str) -> None:
+        super().__init__(f"approval does not authorize {kind} on plan item {item_id!r}")
+        self.item_id = item_id
+        self.kind = kind
+
+
 class OperationError(DomainError):
     """Base class for external-operation lifecycle failures."""
+
+
+class OperationIdentityError(OperationError):
+    """The operation, the plan, and the approval do not describe one proposal."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
 
 
 class InvalidTransitionError(OperationError):

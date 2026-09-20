@@ -71,9 +71,13 @@ enforced in code and covered by offline tests:
   normalized tokens and interval overlap, never a model call. A confirmed hard
   constraint blocks approval; the same constraint unconfirmed forces a
   clarification instead of a silent decision either way.
-- **Approval is bound to exact content.** A confirmation names its owner, plan
-  version, item scope, expiry, and a hash of the approved payload. Any later
-  revision invalidates it, including a change to an item outside its scope.
+- **Approval is bound to exact content and one action.** A confirmation names
+  its owner, plan version, the external action approved for each item, an
+  expiry, and a hash of that payload. Any later revision invalidates it,
+  including a change to an item outside its scope, and a confirmation to create
+  an event never authorizes cancelling one. Authorization is checked again at
+  the execution boundary, so a confirmation that expires or is revoked while the
+  work sits in the queue stops it.
 - **An unknown outcome is not a failure.** A lost response or an expired worker
   lease moves an operation to `outcome_unknown`, from which only reconciliation
   against the provider produces a terminal state. Retrying it directly raises

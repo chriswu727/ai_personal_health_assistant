@@ -4,14 +4,17 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from health_assistant.domain.actions import ApprovedAction, OperationKind
 from health_assistant.domain.approvals import (
     Approval,
     authorize_execution,
     fingerprint_items,
+    fingerprint_scope,
     grant_approval,
 )
 from health_assistant.domain.constraints import ConstraintSet, ConstraintSource
 from health_assistant.domain.errors import (
+    ApprovalActionNotAuthorizedError,
     ApprovalExpiredError,
     ApprovalPayloadChangedError,
     ApprovalRevokedError,
@@ -38,16 +41,17 @@ from tests.support import (
     make_constraint_set,
     make_item,
     make_plan,
+    make_scope,
 )
 
 TTL = timedelta(minutes=30)
-SCOPE = frozenset({PlanItemId("item-a")})
+SCOPE = make_scope("item-a")
 
 
 def _approve(
     plan: PlanVersion,
     constraints: ConstraintSet = EMPTY_CONSTRAINTS,
-    scope: frozenset[PlanItemId] = SCOPE,
+    scope: frozenset[ApprovedAction] = SCOPE,
     now: datetime | None = None,
 ) -> Approval:
     return grant_approval(
@@ -141,7 +145,7 @@ def test_another_user_may_not_approve_the_plan() -> None:
 def test_scope_must_name_existing_unreported_items() -> None:
     plan = make_plan(make_item("item-a"))
     with pytest.raises(ApprovalScopeError):
-        _approve(plan, scope=frozenset({PlanItemId("item-missing")}))
+        _approve(plan, scope=make_scope("item-missing"))
 
     reported = make_plan(
         make_item("item-a", completion=CompletionStatus.COMPLETED),
@@ -155,7 +159,7 @@ def test_a_valid_approval_authorizes_its_scope() -> None:
     plan = make_plan(make_item("item-a"))
     approval = _approve(plan)
 
-    authorize_execution(approval, plan=plan, item_ids=SCOPE, actor_id=OWNER, now=at(minutes=5))
+    authorize_execution(approval, plan=plan, actions=SCOPE, actor_id=OWNER, now=at(minutes=5))
 
 
 def test_expired_and_revoked_approvals_authorize_nothing() -> None:
@@ -163,11 +167,11 @@ def test_expired_and_revoked_approvals_authorize_nothing() -> None:
     approval = _approve(plan)
 
     with pytest.raises(ApprovalExpiredError):
-        authorize_execution(approval, plan=plan, item_ids=SCOPE, actor_id=OWNER, now=at(minutes=30))
+        authorize_execution(approval, plan=plan, actions=SCOPE, actor_id=OWNER, now=at(minutes=30))
 
     revoked = approval.revoke(at=at(minutes=1))
     with pytest.raises(ApprovalRevokedError):
-        authorize_execution(revoked, plan=plan, item_ids=SCOPE, actor_id=OWNER, now=at(minutes=5))
+        authorize_execution(revoked, plan=plan, actions=SCOPE, actor_id=OWNER, now=at(minutes=5))
 
 
 def test_a_wrong_owner_cannot_use_an_approval() -> None:
@@ -176,7 +180,7 @@ def test_a_wrong_owner_cannot_use_an_approval() -> None:
 
     with pytest.raises(OwnershipError):
         authorize_execution(
-            approval, plan=plan, item_ids=SCOPE, actor_id=OTHER_USER, now=at(minutes=5)
+            approval, plan=plan, actions=SCOPE, actor_id=OTHER_USER, now=at(minutes=5)
         )
 
 
@@ -188,7 +192,7 @@ def test_items_outside_the_approved_scope_are_refused() -> None:
         authorize_execution(
             approval,
             plan=plan,
-            item_ids=frozenset({PlanItemId("item-b")}),
+            actions=make_scope("item-b"),
             actor_id=OWNER,
             now=at(minutes=5),
         )
@@ -207,7 +211,7 @@ def test_editing_the_approved_item_invalidates_the_approval() -> None:
 
     with pytest.raises(ApprovalVersionMismatchError):
         authorize_execution(
-            approval, plan=revised, item_ids=SCOPE, actor_id=OWNER, now=at(minutes=5)
+            approval, plan=revised, actions=SCOPE, actor_id=OWNER, now=at(minutes=5)
         )
 
 
@@ -225,7 +229,7 @@ def test_editing_an_unrelated_item_also_invalidates_the_approval() -> None:
 
     with pytest.raises(ApprovalVersionMismatchError):
         authorize_execution(
-            approval, plan=revised, item_ids=SCOPE, actor_id=OWNER, now=at(minutes=5)
+            approval, plan=revised, actions=SCOPE, actor_id=OWNER, now=at(minutes=5)
         )
 
 
@@ -236,6 +240,27 @@ def test_matching_version_with_different_content_is_still_refused() -> None:
     forged = make_plan(make_item("item-a", title="Morning walk"))
 
     with pytest.raises(ApprovalPayloadChangedError):
+        authorize_execution(approval, plan=forged, actions=SCOPE, actor_id=OWNER, now=at(minutes=5))
+
+
+def test_an_approval_does_not_authorize_a_different_action_on_the_same_item() -> None:
+    """A confirmation to create an event is not a confirmation to cancel one."""
+    plan = make_plan(make_item("item-a"))
+    approval = _approve(plan)
+
+    with pytest.raises(ApprovalActionNotAuthorizedError):
         authorize_execution(
-            approval, plan=forged, item_ids=SCOPE, actor_id=OWNER, now=at(minutes=5)
+            approval,
+            plan=plan,
+            actions=make_scope("item-a", kind=OperationKind.CANCEL_EVENT),
+            actor_id=OWNER,
+            now=at(minutes=5),
         )
+
+
+def test_the_fingerprint_distinguishes_the_approved_action() -> None:
+    plan = make_plan(make_item("item-a"))
+    create = fingerprint_scope(plan, make_scope("item-a"))
+    cancel = fingerprint_scope(plan, make_scope("item-a", kind=OperationKind.CANCEL_EVENT))
+
+    assert create != cancel
