@@ -28,3 +28,32 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest
       - run: uv build
+
+  integration:
+    # Database-backed tests. The PostgreSQL service runs on the same standard
+    # GitHub-hosted runner, so no paid service is involved.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: health_assistant_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      HEALTH_ASSISTANT_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/health_assistant_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run pytest -m integration
