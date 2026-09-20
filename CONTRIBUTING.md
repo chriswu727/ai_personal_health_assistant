@@ -20,7 +20,9 @@ Use English for code, identifiers, comments, documentation, commits, and pull re
 
 ## Quality gates
 
-Run quality gates locally. Hosted CI is not required, and the maintainer has opted out to conserve quota. Do not add or trigger hosted workflows unless explicitly requested. Provide reproducible local commands and record the tested commit, environment, and results in delivery evidence.
+Run reproducible quality gates locally and, once configured in S1-06, in GitHub Actions on standard GitHub-hosted runners for this public repository. Default to `ubuntu-latest`; applicable configured CI checks must pass before marking implementation Done. Record the tested commit, environment, commands, and results. Larger/paid runners, paid CI services, and paid API tests require explicit authorization. Reassess billing if visibility changes.
+
+Standard runner execution in public repositories is free under the current [GitHub runner policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). This does not make external APIs or every storage/service feature free. Keep CI tests offline, workflow permissions minimal, execution timeouts bounded, and artifact retention limited; avoid unnecessary artifact uploads. Use the same verification commands locally and in CI.
 
 Introduce automated formatting, linting, strict type checks, relevant tests, and builds with the first executable slice. Python tooling should use Ruff and a selected strict type checker; TypeScript tooling should use ESLint and the TypeScript compiler. Record exact commands and versions once configured. No application quality checks are configured at the documentation-only milestone.
 

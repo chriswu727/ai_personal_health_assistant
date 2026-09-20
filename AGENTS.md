@@ -48,7 +48,7 @@ Chat history is context, not a substitute for repository state. Resolve discrepa
 
 ## Tests and verification
 
-- MUST use local verification. The maintainer has opted out of hosted CI to conserve quota. Do not add, enable, or trigger GitHub Actions or another hosted CI service unless the maintainer explicitly requests a policy change. Hosted CI is not a Definition of Done requirement.
+- MUST retain reproducible local verification. The maintainer authorizes GitHub Actions on standard GitHub-hosted runners while this repository is public; default to `ubuntu-latest`. Add these checks in S1-06 and require applicable configured CI checks to pass before marking implementation Done. Do not use larger/paid runners, paid CI services, or paid API tests without explicit authorization. If repository visibility changes, reassess billing before continuing hosted runs.
 
 - MUST test meaningful changed behavior and relevant failure paths: invalid input, ownership, conflicts, stale approval, duplicate delivery, cancellation, and recovery as applicable.
 - MUST keep default tests deterministic and offline, with synthetic fixtures. Live/provider-paid tests require explicit opt-in and appropriate authorization.
