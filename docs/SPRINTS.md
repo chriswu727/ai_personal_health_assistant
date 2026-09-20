@@ -198,6 +198,28 @@ the review records evidence. Integration results must state which ran locally an
 which ran in CI. A simulated provider is used throughout; live calendar
 integration remains Sprint 5.
 
+### Verification, part one
+
+Part one is in [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2) and awaiting review.
+
+| Check | Where | Result |
+| --- | --- | --- |
+| Format, lint, mypy strict | Local and CI | Pass, 53 files, 33 source files |
+| Offline tests | Local and CI | Pass, 98 tests |
+| Database tests | **CI only** | Pass, 8 tests against `postgres:17` |
+| Build | Local and CI | Pass, sdist and wheel |
+
+[CI run](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35537147290). The database tests did not run locally: this machine has no
+PostgreSQL and no container runtime, so they skipped there. CI was their first
+execution, and the first run failed. `save` detected a version conflict from the
+reported row count of an `ON CONFLICT DO NOTHING` insert, which is not a
+guaranteed signal; the conflict went unnoticed and the failure surfaced later as
+a plan-item primary key violation. Detection now uses `RETURNING`, which yields
+no row on a conflict. The offline suite could not have caught this, and did not.
+
+Not run: any live provider call, any overlapping-transaction test, worker leases,
+and restart recovery. Those are S2-05 and S2-06.
+
 Review: pending. Blockers: none identified. Carryover: none.
 
 ## Later sprint outlines
