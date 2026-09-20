@@ -1,10 +1,12 @@
 # Architecture
 
-Status: the domain layer and the first persistence adapter are implemented and
-tested (`src/health_assistant/domain`, `src/health_assistant/adapters/persistence`:
-users, plans, plan versions, and plan items). Constraint, approval, and operation
-storage, the worker, delivery, model providers, and calendar execution remain
-proposed design with no runtime components.
+Status: the domain layer, the persistence adapter, and the worker's claiming use
+cases are implemented and tested (`src/health_assistant/domain`,
+`src/health_assistant/adapters/persistence`, `src/health_assistant/application`).
+Users, plans, plan versions, plan items, constraints, approvals, approved
+actions, and operations are stored. Delivery, model providers, evidence
+retrieval, and calendar execution remain proposed design with no runtime
+components; the provider is simulated.
 
 ## System shape
 
@@ -93,7 +95,13 @@ Separate public knowledge from private memory. Retrieved documents and tool outp
 
 ## Reliability and scale
 
-Stateless API instances and durable worker leases allow independent scaling. Begin with a database-backed job mechanism; introduce a separate broker only after measuring contention and throughput. Bound provider concurrency per user and per provider. Use timeouts, backoff with jitter, retry budgets, and admission control. Document queue behavior under overload and partial outages.
+Stateless API instances and durable worker leases allow independent scaling. Begin with a database-backed job mechanism; introduce a separate broker only after measuring contention and throughput.
+
+Claiming uses `SELECT ... FOR UPDATE SKIP LOCKED`, so a second worker passes over
+a held row instead of waiting behind it. Whether a claimed row may execute stays
+the domain's decision rather than the query's, and the worker's cross-user scan
+is the single access path not scoped to an owner. See
+[ADR 0005](decisions/0005-worker-claiming.md). Bound provider concurrency per user and per provider. Use timeouts, backoff with jitter, retry budgets, and admission control. Document queue behavior under overload and partial outages.
 
 Record correlation identifiers, transition events, provider latency, queue age, usage, and categorized failures. Exclude raw health content, tokens, and credentials from default logs. Distinguish time to first token, full response latency, and operation completion time. Set performance targets only with a defined workload and environment.
 

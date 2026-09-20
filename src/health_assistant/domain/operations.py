@@ -427,16 +427,21 @@ def retry(operation: ToolOperation, *, now: datetime) -> ToolOperation:
     return replace(operation, state=OperationState.QUEUED, updated_at=require_utc(now, "now"))
 
 
-def cancel(operation: ToolOperation, *, now: datetime) -> ToolOperation:
+def cancel(operation: ToolOperation, *, now: datetime, reason: str | None = None) -> ToolOperation:
     """Cancel work that has not been applied externally.
 
     A succeeded operation is terminal: undoing a confirmed remote write requires
     a separately authorized compensating operation, not a state change here.
+
+    ``reason`` records why, which matters when the cancellation is the system's
+    decision rather than the user's, such as a confirmation that lapsed before a
+    worker reached the operation.
     """
     _ensure_transition(operation, OperationState.CANCELLED)
     return replace(
         operation,
         state=OperationState.CANCELLED,
         lease=None,
+        last_error=reason if reason is not None else operation.last_error,
         updated_at=require_utc(now, "now"),
     )

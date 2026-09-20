@@ -23,7 +23,10 @@ from health_assistant.adapters.persistence import (
 )
 
 URL_VARIABLE = "HEALTH_ASSISTANT_TEST_DATABASE_URL"
-OWNED_TABLES = "plan_items, plan_versions, plans, users"
+OWNED_TABLES = (
+    "tool_operations, approval_actions, approvals, user_constraints, "
+    "plan_items, plan_versions, plans, users"
+)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 

@@ -18,6 +18,7 @@ from sqlalchemy import (
     MetaData,
     Table,
     Text,
+    UniqueConstraint,
 )
 
 metadata = MetaData()
@@ -89,4 +90,125 @@ plan_items = Table(
     ),
     CheckConstraint("ends_at > starts_at", name="ck_plan_items_window_ordered"),
     Index("ix_plan_items_owner_id", "owner_id"),
+)
+
+user_constraints = Table(
+    "user_constraints",
+    metadata,
+    Column("constraint_id", Text, primary_key=True),
+    Column("owner_id", Text, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("severity", Text, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("subject", Text, nullable=False),
+    Column("window_starts_at", DateTime(timezone=True), nullable=True),
+    Column("window_ends_at", DateTime(timezone=True), nullable=True),
+    Column("window_time_zone", Text, nullable=True),
+    Column("recorded_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=True),
+    # A constraint matches either a token or a time window, never both and never
+    # neither, which is the same rule the domain enforces.
+    CheckConstraint(
+        "(subject <> '') <> (window_starts_at IS NOT NULL)",
+        name="ck_user_constraints_token_or_window",
+    ),
+    CheckConstraint(
+        "(window_starts_at IS NULL) = (window_ends_at IS NULL)"
+        " AND (window_starts_at IS NULL) = (window_time_zone IS NULL)",
+        name="ck_user_constraints_window_complete",
+    ),
+    CheckConstraint(
+        "window_ends_at IS NULL OR window_ends_at > window_starts_at",
+        name="ck_user_constraints_window_ordered",
+    ),
+    Index("ix_user_constraints_owner_id", "owner_id"),
+)
+
+approvals = Table(
+    "approvals",
+    metadata,
+    Column("approval_id", Text, primary_key=True),
+    Column("owner_id", Text, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False),
+    Column("plan_id", Text, nullable=False),
+    Column("plan_version", Integer, nullable=False),
+    Column("payload_fingerprint", Text, nullable=False),
+    Column("granted_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("revoked_at", DateTime(timezone=True), nullable=True),
+    ForeignKeyConstraint(
+        ["plan_id", "plan_version"],
+        ["plan_versions.plan_id", "plan_versions.version"],
+        ondelete="CASCADE",
+        name="fk_approvals_plan_version",
+    ),
+    CheckConstraint("expires_at > granted_at", name="ck_approvals_expiry_after_grant"),
+    Index("ix_approvals_owner_id", "owner_id"),
+)
+
+approval_actions = Table(
+    "approval_actions",
+    metadata,
+    Column(
+        "approval_id",
+        Text,
+        ForeignKey("approvals.approval_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("item_id", Text, primary_key=True),
+    Column("kind", Text, primary_key=True),
+    # An empty string rather than NULL for "no target": PostgreSQL treats NULLs
+    # as distinct in a key, so a nullable column would admit duplicate rows.
+    Column("compensates", Text, primary_key=True, nullable=False),
+)
+
+tool_operations = Table(
+    "tool_operations",
+    metadata,
+    Column("operation_id", Text, primary_key=True),
+    Column("owner_id", Text, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False),
+    Column("plan_id", Text, nullable=False),
+    Column("plan_version", Integer, nullable=False),
+    Column("item_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("compensates", Text, nullable=True),
+    Column("idempotency_key", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    Column(
+        "approval_id",
+        Text,
+        ForeignKey("approvals.approval_id", ondelete="RESTRICT"),
+        nullable=True,
+    ),
+    Column("attempts", Integer, nullable=False),
+    Column("retry_budget", Integer, nullable=False),
+    Column("lease_worker_id", Text, nullable=True),
+    Column("lease_acquired_at", DateTime(timezone=True), nullable=True),
+    Column("lease_expires_at", DateTime(timezone=True), nullable=True),
+    Column("external_ref", Text, nullable=True),
+    Column("last_error", Text, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    ForeignKeyConstraint(
+        ["plan_id", "plan_version"],
+        ["plan_versions.plan_id", "plan_versions.version"],
+        ondelete="CASCADE",
+        name="fk_tool_operations_plan_version",
+    ),
+    # One key per external write: a duplicate would let two operations present
+    # the same key to a provider and defeat its deduplication.
+    UniqueConstraint("idempotency_key", name="uq_tool_operations_idempotency_key"),
+    CheckConstraint("attempts >= 0", name="ck_tool_operations_attempts_non_negative"),
+    CheckConstraint("retry_budget >= 1", name="ck_tool_operations_budget_positive"),
+    CheckConstraint(
+        "(lease_worker_id IS NULL) = (lease_acquired_at IS NULL)"
+        " AND (lease_worker_id IS NULL) = (lease_expires_at IS NULL)",
+        name="ck_tool_operations_lease_complete",
+    ),
+    CheckConstraint(
+        "lease_expires_at IS NULL OR lease_expires_at > lease_acquired_at",
+        name="ck_tool_operations_lease_ordered",
+    ),
+    Index("ix_tool_operations_owner_id", "owner_id"),
+    # Supports the worker's claim scan without a sequential table read.
+    Index("ix_tool_operations_state_created", "state", "created_at"),
 )
