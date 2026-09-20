@@ -5,11 +5,10 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
 ## Current position
 
 - Completed: Sprint 0, the repository and design foundation.
-- Next: Sprint 1, the first tested domain slice.
-- Active sprint: none. Implementation has not started.
-- Application release: none.
-
-Maintainer-requested governance follow-up: [AGENTS.md](../AGENTS.md) defines the mandatory AI workflow and [HANDOFF.md](HANDOFF.md) carries session context. This documentation work does not start or complete any Sprint 1 implementation task.
+- Active sprint: Sprint 1, the first tested domain slice. Implementation is complete
+  on a branch and awaiting review; no Sprint 1 task is Done until it is on main.
+- Next: Sprint 2, persistence and ownership enforcement.
+- Application release: none. There is no runnable application or service.
 
 ## Working method
 
@@ -33,7 +32,7 @@ A sprint closes only when its committed acceptance criteria are met. Record the 
 | Sprint | Goal | Status | Depends on | Exit evidence |
 | --- | --- | --- | --- | --- |
 | 0 | Establish the public project foundation | Done | None | Published documents and repository checks |
-| 1 | Model plans, approvals, and operation lifecycles | Planned | 0 | Typed domain package, local and standard-runner CI checks, and behavior tests |
+| 1 | Model plans, approvals, and operation lifecycles | In Progress | 0 | Typed domain package, local and standard-runner CI checks, and behavior tests |
 | 2 | Persist and isolate user workflows | Planned | 1 | API/database integration and recovery tests |
 | 3 | Add grounded reasoning and personal memory | Planned | 2 | Retrieval, memory, and orchestration evaluations |
 | 4 | Deliver the conversational web experience | Planned | 3 | Accessible journeys and cancellation/reconnect checks |
@@ -56,7 +55,8 @@ Review: 12 initial files were published; local documentation-link and English-co
 
 ## Sprint 1: Tested domain foundation
 
-Status: Planned.
+Status: In Progress. Implementation is on the `sprint-1/domain-foundation` branch
+and awaiting review. Tasks remain In Progress until the change is on main.
 
 Goal: implement deterministic plan and approval behavior that future model and calendar adapters must obey.
 
@@ -64,15 +64,37 @@ Scope: backend domain package, development tooling, offline tests, reproducible 
 
 | Task | Deliverable | Acceptance criteria | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| S1-01 | Runtime/tooling decision and package setup | Record supported Python version and strict type-checking choice; lock dependencies; document reproducible installation and verification commands | Planned | Pending |
-| S1-02 | Typed plans and revisions | No framework/SDK dependencies in domain code; revisions preserve unrelated constraints and completed history; invalid input and stale edits are rejected | Planned | Pending |
-| S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | Planned | Pending |
-| S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | Planned | Pending |
-| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | Planned | Pending |
-| S1-06 | Local and CI quality gates | Documented commands run formatting checks, linting, strict type checking, tests, and package build with locked dependencies; the same checks pass locally and on standard GitHub-hosted `ubuntu-latest`; record results; no paid runners or paid API calls | Planned | Pending |
-| S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | Planned | Pending |
+| S1-01 | Runtime/tooling decision and package setup | Record supported Python version and strict type-checking choice; lock dependencies; document reproducible installation and verification commands | In Progress | Python 3.12 pinned in `.python-version`; `pyproject.toml` and `uv.lock`; rationale in [ADR 0001](decisions/0001-python-runtime-and-tooling.md) |
+| S1-02 | Typed plans and revisions | No framework/SDK dependencies in domain code; revisions preserve unrelated constraints and completed history; invalid input and stale edits are rejected | In Progress | `domain/plans.py`, `domain/constraints.py`, `domain/validation.py`; `tests/test_plans.py`, `tests/test_validation.py` |
+| S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | In Progress | `domain/approvals.py`; `tests/test_approvals.py` |
+| S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | In Progress | `domain/operations.py`; `tests/test_operations.py` |
+| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | In Progress | 79 offline tests with synthetic fixtures and an injected fixed clock; `tests/test_scenario_first_journey.py` covers the product-scope journey |
+| S1-06 | Local and CI quality gates | Documented commands run formatting checks, linting, strict type checking, tests, and package build with locked dependencies; the same checks pass locally and on standard GitHub-hosted `ubuntu-latest`; record results; no paid runners or paid API calls | In Progress | `scripts/verify.sh` and `.github/workflows/ci.yml` run identical commands; local run recorded below; the first CI run is pending |
+| S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | In Progress | README implementation section, updated architecture, [ADR 0001](decisions/0001-python-runtime-and-tooling.md) and [ADR 0002](decisions/0002-first-class-constraints.md) |
 
 Definition of Done: S1-01 through S1-07 pass acceptance, changes are on main, and the review records evidence. The domain package runs without a model provider, network, database, or personal data. Domain tests do not establish persistent recovery or live calendar reliability.
+
+Scope change: `Constraint` and deterministic pre-approval validation were added
+to the domain slice. The product scope already required allergy adherence (P06)
+and clarification over silent relaxation (P08), but no entity or component owned
+that check. The reasoning and the alternatives considered are recorded in
+[ADR 0002](decisions/0002-first-class-constraints.md).
+
+Local verification, macOS 15.7.4 arm64, Python 3.12.13, Ruff 0.16.8, mypy 2.3.1,
+pytest 9.1.1, commit as reviewed on the branch:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Format | `uv run ruff format --check .` | Pass, 32 files |
+| Lint | `uv run ruff check .` | Pass |
+| Types | `uv run mypy` | Pass, 19 source files, strict mode |
+| Tests | `uv run pytest` | Pass, 79 tests, offline |
+| Build | `uv build` | Pass, sdist and wheel |
+
+Not run: hosted CI (the workflow is added in this change and has never executed),
+any live provider call, any persistence or concurrency test against a real
+database. These domain tests establish deterministic contracts only. They do not
+establish persistent recovery, live calendar reliability, or clinical validity.
 
 Review: pending. Blockers: none identified. Carryover: none.
 

@@ -2,7 +2,8 @@
 
 A personal AI assistant for evidence-informed exercise, nutrition, sleep, and daily routines, with user-controlled memory and verified calendar actions.
 
-**Status: design foundation. No application, clinical validation, or production service is available yet.**
+**Status: tested domain package. There is no application, web interface, persistence,
+calendar integration, clinical validation, or deployed service yet.**
 
 This engineering portfolio project explores a practical question: how can an assistant turn a changing personal goal into an actionable plan while preserving user constraints, explaining its evidence, and recovering correctly when an external service fails?
 
@@ -23,7 +24,13 @@ The assistant clarifies relevant constraints, proposes a weekly plan, and explai
 - Google Calendar integration with confirmation, reconciliation, and cancellation.
 - Reproducible evaluations for constraints, memory, tool execution, and recovery.
 
-All capabilities above are **planned**, not implemented.
+All product capabilities above are **planned**, not implemented.
+
+What exists today is the deterministic core the later adapters must obey: typed
+plan versions whose revisions preserve reported history, constraint checking
+that runs without a model, approvals bound to an exact payload, and an external
+operation lifecycle that refuses to retry a write whose outcome is unknown. See
+[what is implemented](#what-is-implemented).
 
 ## Documentation
 
@@ -36,6 +43,7 @@ All capabilities above are **planned**, not implemented.
 | [Engineering standards](CONTRIBUTING.md) | Coding, review, testing, and documentation conventions |
 | [AI engineering rules](AGENTS.md) | Mandatory workflow for AI contributors and tool entry points |
 | [Development handoff](docs/HANDOFF.md) | Current context and the next concrete action |
+| [Decision records](docs/decisions/README.md) | Accepted architectural choices and their consequences |
 | [Evaluation strategy](docs/EVALUATION.md) | Evidence required before reliability or scale claims |
 | [Security policy](SECURITY.md) | Sensitive data handling and vulnerability reporting |
 
@@ -49,6 +57,53 @@ Repository documentation, code, comments, commit messages, and review discussion
 
 The intended product provides general wellness information and planning support. It does not independently diagnose conditions, prescribe treatment, or change medication doses. Potentially urgent symptoms require an appropriate help-seeking response rather than continuation of routine coaching. Public examples and evaluation data must be synthetic.
 
+## What is implemented
+
+`src/health_assistant/domain` is a standard-library-only package with no HTTP
+client, database session, model SDK, or user interface. Four properties are
+enforced in code and covered by offline tests:
+
+- **Revisions preserve history.** A plan version is immutable. Revising it
+  produces a successor; an item whose outcome the user reported cannot be
+  edited, removed, or re-reported. A concurrent edit against a stale version is
+  rejected rather than merged.
+- **Constraints are checked deterministically before approval.** Matching uses
+  normalized tokens and interval overlap, never a model call. A confirmed hard
+  constraint blocks approval; the same constraint unconfirmed forces a
+  clarification instead of a silent decision either way.
+- **Approval is bound to exact content.** A confirmation names its owner, plan
+  version, item scope, expiry, and a hash of the approved payload. Any later
+  revision invalidates it, including a change to an item outside its scope.
+- **An unknown outcome is not a failure.** A lost response or an expired worker
+  lease moves an operation to `outcome_unknown`, from which only reconciliation
+  against the provider produces a terminal state. Retrying it directly raises
+  rather than risking a duplicate external write, and every attempt of one
+  operation presents the same idempotency key.
+
+`tests/test_scenario_first_journey.py` walks the whole journey from the product
+scope: a violated allergy blocks approval, the user edits one activity, the
+provider response is lost after the write lands, and reconciliation adopts the
+existing event instead of creating a second one.
+
+Known limitation: constraint matching is exact on declared attributes. It does
+not know that "satay" implies peanut. An ingredient taxonomy belongs to the
+evidence work in Sprint 3.
+
 ## Getting started
 
-Read the product scope and architecture before implementation. There is no executable application or installation command at this milestone. The next deliverable is the first tested domain slice described in the roadmap.
+Requires [uv](https://docs.astral.sh/uv/). The pinned interpreter is Python
+3.12; `uv` installs it if it is absent.
+
+```bash
+uv sync --locked
+uv run pytest
+```
+
+Run every quality gate exactly as CI runs it:
+
+```bash
+./scripts/verify.sh
+```
+
+There is no application to start. The next deliverable is Sprint 2, which adds
+persistence and ownership enforcement around this domain package.

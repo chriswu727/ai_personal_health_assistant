@@ -24,7 +24,22 @@ Run reproducible quality gates locally and, once configured in S1-06, in GitHub 
 
 Standard runner execution in public repositories is free under the current [GitHub runner policy](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). This does not make external APIs or every storage/service feature free. Keep CI tests offline, workflow permissions minimal, execution timeouts bounded, and artifact retention limited; avoid unnecessary artifact uploads. Use the same verification commands locally and in CI.
 
-Introduce automated formatting, linting, strict type checks, relevant tests, and builds with the first executable slice. Python tooling should use Ruff and a selected strict type checker; TypeScript tooling should use ESLint and the TypeScript compiler. Record exact commands and versions once configured. No application quality checks are configured at the documentation-only milestone.
+Python tooling uses Ruff for formatting and linting and mypy in `strict` mode for
+type checking, with pytest for tests and `uv` for locked dependencies and the
+pinned interpreter; see [ADR 0001](docs/decisions/0001-python-runtime-and-tooling.md).
+TypeScript tooling should use ESLint and the TypeScript compiler when a client is
+introduced.
+
+`./scripts/verify.sh` runs the configured gates in the same order as CI:
+
+```bash
+uv sync --locked
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy
+uv run pytest
+uv build
+```
 
 Tests should verify behavior: domain invariants, ownership, concurrency, provider contracts, and failure recovery. Use unit tests for deterministic rules, integration tests for persistence, contract tests for adapters, and a small number of end-to-end user journeys. Do not optimize for a coverage badge or tests that merely mirror implementation.
 
