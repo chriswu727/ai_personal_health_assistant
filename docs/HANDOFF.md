@@ -36,11 +36,17 @@ container:
 
 - `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and
   `uv run mypy --platform win32`: passed, 65 files, 44 source files, strict mode.
-- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 133 passed.
-- `uv run pytest` without it: 101 passed, 32 skipped, which are the database tests.
+- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 139 passed.
+- `uv run pytest` without it: 101 passed, 38 skipped, which are the database tests.
 - `uv build`: passed.
 
-Not run: any live provider call, restart recovery across a process exit, and the
+Covered: claiming under contention through two simultaneous transactions, lease
+expiry through the worker use case, authorization against current records, and
+refusal of writes built on stale reads.
+
+Not covered: restart recovery across a real process exit, which the lease tests
+simulate by advancing the clock rather than by killing a worker; concurrency
+beyond the claim and stale-write paths; any live provider call; and the
 adversarial path probes. Those are S2-06 and S2-07.
 
 ## Next action

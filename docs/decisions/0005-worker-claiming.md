@@ -40,11 +40,11 @@ the oldest queued row that no other transaction holds. A second worker skips a
 locked row rather than waiting behind it, and the lock lasts exactly as long as
 the surrounding transaction.
 
-`claim_next` is the single access path that is not owner-scoped, and it is named
-and documented so that it stays findable. It returns an operation to work on and
-no user content. Everything the worker loads next, the plan and the approval, is
-fetched with that operation's own owner, so authorization stays owner-scoped even
-though the scan is not.
+`claim_next` and `expired_leases` are the two access paths that are not
+owner-scoped, and they are named and documented so that they stay findable. Both
+return operations to work on and no user content. Everything the worker loads
+next, the plan and the approval, is fetched with that operation's own owner, so
+authorization stays owner-scoped even though the scans are not.
 
 Whether a row may execute is the domain's decision, not the query's. The
 application layer loads the plan and approval and calls the same
@@ -52,6 +52,24 @@ application layer loads the plan and approval and calls the same
 authorization has lapsed is cancelled with the reason recorded, rather than left
 in the queue: nothing about waiting makes an expired confirmation valid again,
 and leaving it would spin.
+
+That check is only worth anything against current records, and three things make
+it so:
+
+- The plan is loaded at its **newest** version, not at the version the operation
+  was queued under. A revision the user made while the work waited is exactly
+  what should invalidate the confirmation, and reloading the queued version
+  would compare it against itself.
+- The plan row and the approval row are read for update. A revision or a
+  revocation committing at the same moment then orders itself against the claim
+  instead of slipping between the read and the commit. A new plan version is an
+  insert, so the plan row rather than the version row is the point they order on.
+- Advancing an operation is conditional on the snapshot the caller read: its
+  state, attempt count, and update instant form the update's condition. A write
+  built on a stale read is refused as a conflict rather than applied. `SKIP
+  LOCKED` orders two simultaneous claims; it does nothing about a write that
+  arrives later carrying an older view, which could otherwise erase a live lease
+  or regress a settled outcome.
 
 An expired lease is released to `outcome_unknown`, never to `failed`. The
 external write may have landed, and only reconciliation against the provider can
@@ -73,6 +91,16 @@ external attempt, because their confirmation expired first. That is the intended
 behavior and the interface must explain it rather than hide it, which is work
 for the delivery layer.
 
-The non-owner-scoped path is a standing exception. If a second one appears, that
-is the moment to reconsider whether ownership belongs in the repository layer at
-all, rather than quietly accumulating exceptions to a rule.
+Insertion and advancement are separate operations, so a caller cannot create a
+row by accident while meaning to advance one, and the conditional update has a
+snapshot to compare against. Callers must keep the object they read, which is
+the cost of not carrying a revision column into the domain.
+
+Holding the plan row for the length of a claim means a revision briefly waits
+behind a worker. Claims are short, and the alternative is a confirmation that
+outlives the plan it described.
+
+The non-owner-scoped paths are a standing exception, and there are two of them
+rather than one. If a third appears, that is the moment to reconsider whether
+ownership belongs in the repository layer at all, rather than quietly
+accumulating exceptions to a rule.

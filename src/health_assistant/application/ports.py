@@ -27,8 +27,14 @@ class PlanRepository(Protocol):
         """Return one version owned by ``owner_id``, or None."""
         ...
 
-    async def latest(self, *, owner_id: UserId, plan_id: PlanId) -> PlanVersion | None:
-        """Return the highest-numbered version owned by ``owner_id``, or None."""
+    async def latest(
+        self, *, owner_id: UserId, plan_id: PlanId, for_update: bool = False
+    ) -> PlanVersion | None:
+        """Return the highest-numbered version owned by ``owner_id``, or None.
+
+        ``for_update`` holds the plan so a concurrent revision serializes
+        against this read instead of landing between it and the commit.
+        """
         ...
 
 
@@ -55,22 +61,37 @@ class ApprovalRepository(Protocol):
 
     async def save(self, approval: Approval) -> None: ...
 
-    async def get(self, *, owner_id: UserId, approval_id: ApprovalId) -> Approval | None: ...
+    async def get(
+        self, *, owner_id: UserId, approval_id: ApprovalId, for_update: bool = False
+    ) -> Approval | None:
+        """Load an approval, optionally holding it for the rest of the transaction."""
+        ...
 
 
 class OperationRepository(Protocol):
     """Storage for external operations and the worker's view of the queue."""
 
-    async def save(self, operation: ToolOperation) -> None: ...
+    async def add(self, operation: ToolOperation) -> None:
+        """Record a newly proposed operation, refusing to overwrite an existing one."""
+        ...
+
+    async def advance(self, operation: ToolOperation, *, previous: ToolOperation) -> None:
+        """Apply a transition only if the stored row is still ``previous``.
+
+        A write built on a snapshot another transaction has advanced past is
+        refused, so it cannot undo committed work such as a live lease.
+        """
+        ...
 
     async def get(self, *, owner_id: UserId, operation_id: OperationId) -> ToolOperation | None: ...
 
     async def claim_next(self) -> ToolOperation | None:
         """Lock and return the oldest queued operation across all users.
 
-        This is the one access path that is not owner-scoped, because a worker
-        serves every queue. It returns an operation to work on and no user
-        content; the caller loads the rest with that operation's owner.
+        Together with ``expired_leases`` this is one of the two access paths
+        that are not owner-scoped, because a worker serves every queue. They
+        return operations to work on and no user content; the caller loads the
+        rest with each operation's own owner.
         """
         ...
 

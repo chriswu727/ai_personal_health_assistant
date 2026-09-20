@@ -88,5 +88,5 @@ async def seed_queued_operation(
     async with unit_of_work(engine) as work:
         await work.plans.save(plan)
         await work.approvals.save(approval)
-        await work.operations.save(operation)
+        await work.operations.add(operation)
     return plan, approval, operation

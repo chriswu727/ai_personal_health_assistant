@@ -4,6 +4,13 @@ Claiming is two decisions, not one. The store picks a row nobody else holds; the
 domain decides whether that row may still be executed. Keeping them apart means
 the authorization check at the execution boundary is the same code the
 confirmation path uses, rather than a second implementation in a query.
+
+That check is only worth anything against current records. The plan is loaded at
+its newest version, not at the version the operation was queued under, because a
+revision the user made while the work waited is exactly what should invalidate
+the confirmation. Both the plan and the approval are read so that a concurrent
+revision or revocation orders itself against the claim rather than slipping
+between the read and the commit.
 """
 
 from dataclasses import dataclass
@@ -47,16 +54,16 @@ async def claim_next_operation(
     if candidate is None:
         return ClaimOutcome()
 
-    plan = await work.plans.get(
-        owner_id=candidate.owner_id,
-        plan_id=candidate.plan_id,
-        version=candidate.plan_version,
+    plan = await work.plans.latest(
+        owner_id=candidate.owner_id, plan_id=candidate.plan_id, for_update=True
     )
     approval = (
         None
         if candidate.approval_id is None
         else await work.approvals.get(
-            owner_id=candidate.owner_id, approval_id=candidate.approval_id
+            owner_id=candidate.owner_id,
+            approval_id=candidate.approval_id,
+            for_update=True,
         )
     )
     if plan is None or approval is None:
@@ -76,7 +83,7 @@ async def claim_next_operation(
     except (ApprovalError, OperationIdentityError) as lapsed:
         return await _cancel(work, candidate, now=now, reason=str(lapsed))
 
-    await work.operations.save(claimed)
+    await work.operations.advance(claimed, previous=candidate)
     return ClaimOutcome(claimed=claimed)
 
 
@@ -91,7 +98,7 @@ async def release_expired_leases(
     released = []
     for operation in await work.operations.expired_leases(now=now, limit=limit):
         moved = expire_lease(operation, now=now)
-        await work.operations.save(moved)
+        await work.operations.advance(moved, previous=operation)
         released.append(moved)
     return tuple(released)
 
@@ -100,5 +107,5 @@ async def _cancel(
     work: UnitOfWork, operation: ToolOperation, *, now: datetime, reason: str
 ) -> ClaimOutcome:
     cancelled = cancel(operation, now=now, reason=reason)
-    await work.operations.save(cancelled)
+    await work.operations.advance(cancelled, previous=operation)
     return ClaimOutcome(cancelled=cancelled)

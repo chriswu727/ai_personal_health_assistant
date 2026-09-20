@@ -1,21 +1,25 @@
 """Durable storage for external operations, including worker claiming.
 
 Most methods are scoped to an owner like every other repository. ``claim_next``
-is not, and deliberately: a worker serves every user's queue. It returns only an
-operation to work on, and the caller must then load that operation's plan and
-approval with the operation's own owner, so authorization stays owner-scoped
-even though the scan is not.
+and ``expired_leases`` are not, and deliberately: a worker serves every user's
+queue. They return only operations to work on, and the caller must then load
+each operation's plan and approval with that operation's own owner, so
+authorization stays owner-scoped even though the scans are not.
+
+Insertion and advancement are separate. An advance names the snapshot it was
+built on and applies only if the stored row still matches it, so a write built
+on a stale read is refused instead of undoing committed work.
 """
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from health_assistant.adapters.persistence.mapping import operation_row, to_operation
 from health_assistant.adapters.persistence.schema import tool_operations
-from health_assistant.domain.errors import OwnershipError
+from health_assistant.domain.errors import OperationConflictError, OwnershipError
 from health_assistant.domain.identifiers import OperationId, UserId
 from health_assistant.domain.operations import OperationState, ToolOperation
 from health_assistant.domain.scheduling import require_utc
@@ -40,18 +44,43 @@ class SqlOperationRepository:
     def __init__(self, connection: AsyncConnection) -> None:
         self._connection = connection
 
-    async def save(self, operation: ToolOperation) -> None:
-        """Store or advance an operation, refusing to touch another user's row."""
-        statement = insert(tool_operations).values(operation_row(operation))
+    async def add(self, operation: ToolOperation) -> None:
+        """Record a newly proposed operation, refusing to overwrite an existing one."""
         result = await self._connection.execute(
-            statement.on_conflict_do_update(
-                index_elements=["operation_id"],
-                set_={column: statement.excluded[column] for column in _MUTABLE_COLUMNS},
-                where=tool_operations.c.owner_id == operation.owner_id,
-            ).returning(tool_operations.c.operation_id)
+            insert(tool_operations)
+            .values(operation_row(operation))
+            .on_conflict_do_nothing(index_elements=["operation_id"])
+            .returning(tool_operations.c.operation_id)
         )
         if result.scalar_one_or_none() is None:
-            raise OwnershipError(f"operation {operation.operation_id!r} belongs to another user")
+            raise OperationConflictError(f"operation {operation.operation_id!r} already exists")
+
+    async def advance(self, operation: ToolOperation, *, previous: ToolOperation) -> None:
+        """Apply a transition, but only if the stored row is still ``previous``.
+
+        The state, attempt count, and update instant of the snapshot the caller
+        read form the update's condition. A worker that committed a claim in the
+        meantime therefore cannot have its lease erased by a later write built on
+        the pre-claim snapshot.
+        """
+        if operation.operation_id != previous.operation_id:
+            raise OperationConflictError("the previous snapshot describes a different operation")
+        row = operation_row(operation)
+        result = await self._connection.execute(
+            update(tool_operations)
+            .where(
+                tool_operations.c.operation_id == operation.operation_id,
+                tool_operations.c.owner_id == operation.owner_id,
+                tool_operations.c.state == str(previous.state),
+                tool_operations.c.attempts == previous.attempts,
+                tool_operations.c.updated_at == previous.updated_at,
+            )
+            .values({column: row[column] for column in _MUTABLE_COLUMNS})
+            .returning(tool_operations.c.operation_id)
+        )
+        if result.scalar_one_or_none() is not None:
+            return
+        await self._explain_failed_advance(operation)
 
     async def get(self, *, owner_id: UserId, operation_id: OperationId) -> ToolOperation | None:
         result = await self._connection.execute(
@@ -99,3 +128,19 @@ class SqlOperationRepository:
             .with_for_update(skip_locked=True)
         )
         return tuple(to_operation(dict(row)) for row in result.mappings())
+
+    async def _explain_failed_advance(self, operation: ToolOperation) -> None:
+        """Raise the error that actually describes why the update matched nothing."""
+        result = await self._connection.execute(
+            select(tool_operations.c.owner_id).where(
+                tool_operations.c.operation_id == operation.operation_id
+            )
+        )
+        owner = result.scalar_one_or_none()
+        if owner is None:
+            raise OperationConflictError(f"operation {operation.operation_id!r} does not exist")
+        if owner != operation.owner_id:
+            raise OwnershipError(f"operation {operation.operation_id!r} belongs to another user")
+        raise OperationConflictError(
+            f"operation {operation.operation_id!r} changed since it was read"
+        )

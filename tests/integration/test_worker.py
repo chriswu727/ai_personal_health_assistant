@@ -12,8 +12,9 @@ from health_assistant.application.worker import (
 )
 from health_assistant.domain.identifiers import OperationId
 from health_assistant.domain.operations import OperationState, claim
+from health_assistant.domain.plans import ReplaceItem, revise
 from tests.integration.support import seed_queued_operation
-from tests.support import OWNER, at
+from tests.support import OWNER, at, make_item
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -87,7 +88,7 @@ async def test_an_expired_lease_returns_work_for_reconciliation(
     """Not failed: the external write may well have landed."""
     plan, approval, operation = await seed_queued_operation(engine)
     async with unit_of_work(engine) as work:
-        await work.operations.save(
+        await work.operations.advance(
             claim(
                 operation,
                 approval=approval,
@@ -95,7 +96,8 @@ async def test_an_expired_lease_returns_work_for_reconciliation(
                 worker_id="worker-1",
                 now=at(minutes=3),
                 lease_duration=LEASE,
-            )
+            ),
+            previous=operation,
         )
 
     async with unit_of_work(engine) as work:
@@ -109,3 +111,55 @@ async def test_an_expired_lease_returns_work_for_reconciliation(
     assert stored is not None
     assert stored.state is OperationState.OUTCOME_UNKNOWN
     assert stored.attempts == 1, "reconciliation must not consume another attempt"
+
+
+async def test_a_plan_revised_while_the_work_waited_cancels_it(
+    engine: AsyncEngine,
+) -> None:
+    """Regression: the worker must authorize against the current plan, not the queued one."""
+    plan, _, _ = await seed_queued_operation(engine)
+    revised = revise(
+        plan,
+        actor_id=OWNER,
+        expected_version=1,
+        changes=[ReplaceItem(make_item("item-a", title="Morning walk"))],
+        now=at(minutes=2),
+    )
+    async with unit_of_work(engine) as work:
+        await work.plans.save(revised)
+
+    async with unit_of_work(engine) as work:
+        outcome = await claim_next_operation(
+            work, worker_id="worker-1", now=at(minutes=3), lease_duration=LEASE
+        )
+
+    assert outcome.claimed is None
+    assert outcome.cancelled is not None
+    assert outcome.cancelled.state is OperationState.CANCELLED
+
+    async with unit_of_work(engine) as work:
+        assert await work.operations.claim_next() is None
+
+
+async def test_an_edit_outside_the_approved_scope_also_cancels_the_work(
+    engine: AsyncEngine,
+) -> None:
+    """Any revision produces a new version, which is what invalidates consent."""
+    plan, _, _ = await seed_queued_operation(engine)
+    revised = revise(
+        plan,
+        actor_id=OWNER,
+        expected_version=1,
+        changes=[ReplaceItem(make_item("item-b", title="Longer swim", start_hours=48))],
+        now=at(minutes=2),
+    )
+    async with unit_of_work(engine) as work:
+        await work.plans.save(revised)
+
+    async with unit_of_work(engine) as work:
+        outcome = await claim_next_operation(
+            work, worker_id="worker-1", now=at(minutes=3), lease_duration=LEASE
+        )
+
+    assert outcome.claimed is None
+    assert outcome.cancelled is not None

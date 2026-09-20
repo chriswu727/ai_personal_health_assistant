@@ -5,7 +5,7 @@ confirmation. Only revocation mutates a stored approval, so the approved actions
 are written once and the approval row carries the revocation instant.
 """
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -32,7 +32,13 @@ class SqlApprovalRepository:
         result = await self._connection.execute(
             statement.on_conflict_do_update(
                 index_elements=["approval_id"],
-                set_={"revoked_at": statement.excluded["revoked_at"]},
+                # Revocation is monotonic. A stale snapshot saved after a
+                # revocation must not restore consent by writing NULL back.
+                set_={
+                    "revoked_at": func.coalesce(
+                        approvals.c.revoked_at, statement.excluded["revoked_at"]
+                    )
+                },
                 where=approvals.c.owner_id == approval.owner_id,
             ).returning(approvals.c.approval_id)
         )
@@ -48,12 +54,21 @@ class SqlApprovalRepository:
             )
         )
 
-    async def get(self, *, owner_id: UserId, approval_id: ApprovalId) -> Approval | None:
+    async def get(
+        self, *, owner_id: UserId, approval_id: ApprovalId, for_update: bool = False
+    ) -> Approval | None:
+        """Load an approval, optionally holding it for the rest of the transaction.
+
+        A worker authorizing execution reads it ``for_update`` so that a
+        revocation committing at the same moment serializes against the claim
+        instead of being missed between the read and the commit.
+        """
+        statement = select(approvals).where(
+            approvals.c.approval_id == approval_id,
+            approvals.c.owner_id == owner_id,
+        )
         result = await self._connection.execute(
-            select(approvals).where(
-                approvals.c.approval_id == approval_id,
-                approvals.c.owner_id == owner_id,
-            )
+            statement.with_for_update() if for_update else statement
         )
         row = result.mappings().one_or_none()
         if row is None:

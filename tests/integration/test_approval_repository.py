@@ -155,3 +155,33 @@ async def test_another_user_neither_reads_nor_revokes(engine: AsyncEngine) -> No
         stored = await work.approvals.get(owner_id=OWNER, approval_id=ApprovalId("approval-1"))
     assert stored is not None
     assert not stored.is_revoked
+
+
+async def test_a_stale_snapshot_cannot_undo_a_revocation(engine: AsyncEngine) -> None:
+    """Regression: a delayed write is enough; no forged approval is needed."""
+    await register_users(engine, OWNER)
+    plan = make_plan(make_item("item-a"))
+    approval = build_approval(plan)
+
+    async with unit_of_work(engine) as work:
+        await work.plans.save(plan)
+        await work.approvals.save(approval)
+    async with unit_of_work(engine) as work:
+        await work.approvals.save(approval.revoke(at=at(minutes=2.5)))
+
+    # The caller still holds the pre-revocation object and saves it again.
+    async with unit_of_work(engine) as work:
+        await work.approvals.save(approval)
+
+    async with unit_of_work(engine) as work:
+        stored = await work.approvals.get(owner_id=OWNER, approval_id=ApprovalId("approval-1"))
+    assert stored is not None
+    assert stored.is_revoked
+    with pytest.raises(ApprovalRevokedError):
+        authorize_execution(
+            stored,
+            plan=plan,
+            actions=make_scope("item-a"),
+            actor_id=OWNER,
+            now=at(minutes=5),
+        )

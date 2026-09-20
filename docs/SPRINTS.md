@@ -260,6 +260,25 @@ already-applied migration. Each supports the decision in
 Not run: any live provider call, any overlapping-transaction test, worker leases,
 and restart recovery. Those are S2-05 and S2-06.
 
+### Review round 1, part two
+
+Three P1 findings, all reproduced against PostgreSQL before any change and all
+blocked after it. Each was a write or a read that trusted a snapshot which had
+already moved on:
+
+| Finding | Reproduced behavior | Resolution |
+| --- | --- | --- |
+| The worker authorized against a historical plan | The worker reloaded the version the operation was queued under, so the domain compared that version against itself and a plan revised in the meantime never invalidated the confirmation | The plan is loaded at its newest version, and the plan row is read for update so a revision orders itself against the claim |
+| A stale save undid a revocation | Saving a pre-revocation snapshot after a revocation wrote `NULL` back over the timestamp, restoring consent | Revocation is monotonic in storage, and the worker reads the approval for update |
+| A stale save erased a live lease | Saving a pre-claim snapshot reset state, attempts, and lease, letting a second worker take work the first still held | Insertion and advancement are separate, and an advance applies only if the stored row still matches the snapshot it was built on |
+
+The last one is worth stating plainly: `SKIP LOCKED` orders two simultaneous
+claims and does nothing about a write arriving later with an older view. The
+concurrency test that passed was testing the case that was already safe.
+
+Documentation corrected alongside: the ADR claimed `claim_next` was the only
+access path not scoped to an owner, and `expired_leases` is a second one.
+
 ### Verification, part two
 
 Part two covers S2-04 and S2-05 and is awaiting review.
@@ -268,10 +287,10 @@ Part two covers S2-04 and S2-05 and is awaiting review.
 | --- | --- | --- |
 | Format, lint, mypy strict | Local | Pass, 44 source files, native platform and `win32` |
 | Offline tests | Local | Pass, 101 tests |
-| Database tests | Local | Pass, 32 tests against PostgreSQL 17 |
+| Database tests | Local | Pass, 38 tests against PostgreSQL 17 |
 | Build | Local | Pass, sdist and wheel |
 
-133 tests pass locally with the database configured, 101 with 32 skipped
+139 tests pass locally with the database configured, 101 with 38 skipped
 without it. CI results are recorded on the pull request.
 
 The concurrency claim is tested rather than asserted: two transactions open at

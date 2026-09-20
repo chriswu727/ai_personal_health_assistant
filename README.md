@@ -84,11 +84,13 @@ enforced in code and covered by offline tests:
   every read to the owner, so a request for another user's data returns nothing.
   A plan version must be written onto its own stored parent, so a lost update is
   a rejected write rather than a silent overwrite.
-- **Queued work is re-authorized before it runs.** A worker takes the oldest
-  operation no other worker holds, then loads that operation's plan and approval
-  and asks the domain whether it may still execute. A confirmation that expired
-  or was revoked while the work waited cancels the operation with the reason
-  recorded, rather than leaving it to spin. A worker that stops reporting has its
+- **Queued work is re-authorized against current records before it runs.** A
+  worker takes the oldest operation no other worker holds, then loads that
+  operation's owner's **current** plan and its approval and asks the domain
+  whether it may still execute. A plan revised, or a confirmation expired or
+  revoked, while the work waited cancels the operation with the reason recorded
+  rather than leaving it to spin. A write built on a stale read is refused, so a
+  late save cannot erase a live lease. A worker that stops reporting has its
   lease released to an unknown outcome, never to a failure.
 - **An unknown outcome is not a failure.** A lost response or an expired worker
   lease moves an operation to `outcome_unknown`, from which only reconciliation
