@@ -37,9 +37,24 @@ uv sync --locked
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy
+uv run mypy --platform win32
 uv run pytest
 uv build
 ```
+
+Database tests are marked `integration` and skip unless
+`HEALTH_ASSISTANT_TEST_DATABASE_URL` names a PostgreSQL server. A local one:
+
+```bash
+docker run -d --name health-assistant-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=health_assistant_test -p 5432:5432 postgres:17
+```
+
+```bash
+export HEALTH_ASSISTANT_TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/health_assistant_test
+```
+
+With that set, `uv run pytest` runs them alongside the offline suite; without it
+they skip and CI covers them. Delivery evidence must say which ran where.
 
 Tests should verify behavior: domain invariants, ownership, concurrency, provider contracts, and failure recovery. Use unit tests for deterministic rules, integration tests for persistence, contract tests for adapters, and a small number of end-to-end user journeys. Do not optimize for a coverage badge or tests that merely mirror implementation.
 

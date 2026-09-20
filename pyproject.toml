@@ -8,12 +8,16 @@ license = { file = "LICENSE" }
 dependencies = [
     # IANA time-zone database for platforms without a system tzdata (Windows).
     "tzdata>=2025.1; sys_platform == 'win32'",
+    "SQLAlchemy[asyncio]>=2.0.36",
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
 ]
 
 [dependency-groups]
 dev = [
     "mypy>=1.14",
     "pytest>=8.3",
+    "pytest-asyncio>=0.24",
     "ruff>=0.9",
 ]
 
@@ -49,6 +53,8 @@ max-args = 8
 
 [tool.mypy]
 python_version = "3.12"
+# Alembic generates revision scripts from a template that has no annotations.
+exclude = ["^migrations/versions/"]
 files = ["src", "tests"]
 strict = true
 warn_unreachable = true
@@ -57,3 +63,8 @@ enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers --strict-config"
+markers = [
+    "integration: requires a PostgreSQL database named by HEALTH_ASSISTANT_TEST_DATABASE_URL",
+]
+# Strict mode: every asynchronous test names itself, rather than being adopted silently.
+asyncio_mode = "strict"

@@ -124,8 +124,8 @@ class PlanVersion:
             raise ValidationError("plan version must start at 1")
         if (self.version == 1) != (self.parent_version is None):
             raise ValidationError("only the first version may omit a parent version")
-        if self.parent_version is not None and self.parent_version >= self.version:
-            raise ValidationError("parent version must precede this version")
+        if self.parent_version is not None and self.parent_version != self.version - 1:
+            raise ValidationError("a version's parent must be the version immediately before it")
         identifiers = [item.item_id for item in self.items]
         if len(set(identifiers)) != len(identifiers):
             raise ValidationError("plan item identifiers must be unique within a version")

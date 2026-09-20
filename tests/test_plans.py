@@ -15,12 +15,26 @@ from health_assistant.domain.identifiers import PlanItemId
 from health_assistant.domain.plans import (
     AddItem,
     CompletionStatus,
+    PlanVersion,
     RecordCompletion,
     RemoveItem,
     ReplaceItem,
     revise,
 )
-from tests.support import BASE_INSTANT, OTHER_USER, OWNER, at, make_item, make_plan
+from tests.support import BASE_INSTANT, OTHER_USER, OWNER, PLAN, at, make_item, make_plan
+
+
+def test_a_version_parent_must_be_the_version_immediately_before_it() -> None:
+    """Guards a gap a store could otherwise accept: version 3 written onto version 1."""
+    with pytest.raises(ValidationError):
+        PlanVersion(
+            plan_id=PLAN,
+            owner_id=OWNER,
+            version=3,
+            items=(make_item("item-a"),),
+            created_at=BASE_INSTANT,
+            parent_version=1,
+        )
 
 
 def test_initial_version_has_no_parent() -> None:
