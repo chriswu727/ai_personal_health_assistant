@@ -1,6 +1,8 @@
 # Architecture
 
-Status: proposed design; no runtime components are implemented.
+Status: the domain layer is implemented and tested in `src/health_assistant/domain`.
+Application services, persistence, delivery, and every adapter remain proposed
+design with no runtime components.
 
 ## System shape
 
@@ -29,23 +31,51 @@ Use explicit interfaces at external boundaries. Do not abstract every function o
 
 ## Data model
 
-Keep User, Consent, MemoryFact, Observation, Goal, PlanVersion, PlanItem, EvidenceReference, Approval, ToolOperation, and ExternalResourceMapping distinct. User-owned entities carry an owner identifier enforced at every access path. Memory records include provenance, observed/recorded time, validity, and confirmation status. Store UTC instants with IANA time-zone context for schedules; retain original units and measurement times for observations.
+Keep User, Consent, MemoryFact, Observation, Goal, Constraint, PlanVersion, PlanItem, EvidenceReference, Approval, ToolOperation, and ExternalResourceMapping distinct. User-owned entities carry an owner identifier enforced at every access path. Memory records include provenance, observed/recorded time, validity, and confirmation status. Store UTC instants with IANA time-zone context for schedules; retain original units and measurement times for observations.
 
 Plans reference the facts and evidence used to produce them. Inferred preferences remain proposals until confirmed. Concurrent edits use version checks. Export and deletion include derived retrieval records and cached user context, with separately documented backup retention.
 
+## Constraint validation
+
+A constraint is a distinct entity, not a flavor of memory fact, because a
+deterministic check stands between any generated proposal and the approval that
+authorizes external execution. `validate_plan` matches normalized tokens and
+time intervals only; no model call participates, so the same plan and constraint
+set always produce the same findings.
+
+Severity and confirmation are independent. A hard constraint the user stated
+yields a violation; the same constraint inferred but unconfirmed yields a
+clarification requirement. Both block approval, so an unconfirmed inference is
+neither silently enforced nor silently ignored. `grant_approval` performs this
+validation itself, which means no execution path can obtain an approval for a
+plan that violates a hard constraint. See
+[ADR 0002](decisions/0002-first-class-constraints.md).
+
+Items with a reported outcome are history and are not revalidated. Recording a
+constraint today must not retroactively invalidate what already happened.
+
 ## External execution
 
-Proposed operation states: proposed, awaiting_confirmation, queued, executing, succeeded, failed, cancelled, and outcome_unknown. Define allowed transitions and persistence semantics in the first implementation slice.
+Operation states: proposed, awaiting_confirmation, queued, executing, succeeded,
+failed, cancelled, and outcome_unknown. Allowed transitions are implemented as
+data in `health_assistant.domain.operations.ALLOWED_TRANSITIONS`; persistence
+semantics remain proposed until Sprint 2.
 
 1. Persist a validated proposal and its exact payload version.
-2. Bind user confirmation to that version, operation scope, and expiration.
+2. Bind user confirmation to that version, the specific external action, the operation scope, and an expiration.
 3. Atomically record the executable operation and queue/outbox entry.
-4. Claim work with a lease and persist attempt metadata.
-5. Apply provider-supported idempotency or stable resource identifiers.
-6. On an ambiguous response, reconcile the provider state before retrying a write.
-7. Persist a verified result and expose structured status to the client.
+4. Revalidate authorization at the execution boundary before claiming work: a
+   confirmation can expire or be revoked while the operation sits in the queue.
+5. Claim work with a lease and persist attempt metadata.
+6. Apply provider-supported idempotency or stable resource identifiers.
+7. On an ambiguous response, reconcile the provider state before retrying a write.
+8. Persist a verified result and expose structured status to the client.
 
 Do not claim exactly-once delivery across a database and an external API. Design for at-least-once delivery with deduplication and reconciliation. An expired lease is not evidence that an external write failed. Cancellation after a confirmed remote write may require a separately authorized compensating action.
+
+An approval names the action it authorizes, not only the item, so a confirmation
+to create an event cannot authorize cancelling it; see
+[ADR 0003](decisions/0003-authorization-boundary.md).
 
 Calendar access defaults to an assistant-owned calendar and neutral event titles. Do not edit unrelated events. A changed proposal invalidates its earlier confirmation. Revoked credentials stop execution without retry storms.
 
