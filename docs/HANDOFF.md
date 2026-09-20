@@ -5,13 +5,12 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
 ## Current state
 
 - Canonical repository: `chriswu727/ai_personal_health_assistant`.
-- Sprint 0 foundation: Done.
-- Sprint 1: In Progress. The domain slice is in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1) and is
-  awaiting review. No Sprint 1 task is Done until the change is on main.
+- Sprint 0 foundation: Done. Sprint 1 domain slice: Done, merged as `e00c949`.
+- Sprint 2: In Progress on `sprint-2/persistence-foundation`. Tasks S2-01 and
+  S2-02 are underway; S2-03 through S2-08 are Planned.
 - Runtime and checks: Python 3.12 pinned, dependencies locked with `uv`, and
-  format, lint, strict type, test, and build gates configured. They run locally
-  through `./scripts/verify.sh` and in GitHub Actions on `ubuntu-latest`.
-- Current work: Sprint 1 tasks S1-01 through S1-07.
+  format, lint, strict type, test, and build gates running locally through
+  `./scripts/verify.sh` and in GitHub Actions on `ubuntu-latest`.
 
 ## Latest change
 

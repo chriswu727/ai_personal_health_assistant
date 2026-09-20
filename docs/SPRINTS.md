@@ -4,10 +4,9 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
 
 ## Current position
 
-- Completed: Sprint 0, the repository and design foundation.
-- Active sprint: Sprint 1, the first tested domain slice. Implementation is complete
-  on a branch and awaiting review; no Sprint 1 task is Done until it is on main.
-- Next: Sprint 2, persistence and ownership enforcement.
+- Completed: Sprint 0, the repository and design foundation. Sprint 1, the tested
+  domain slice, merged in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1).
+- Active sprint: Sprint 2, persistence and ownership enforcement.
 - Application release: none. There is no runnable application or service.
 
 ## Working method
@@ -32,8 +31,8 @@ A sprint closes only when its committed acceptance criteria are met. Record the 
 | Sprint | Goal | Status | Depends on | Exit evidence |
 | --- | --- | --- | --- | --- |
 | 0 | Establish the public project foundation | Done | None | Published documents and repository checks |
-| 1 | Model plans, approvals, and operation lifecycles | In Progress | 0 | Typed domain package, local and standard-runner CI checks, and behavior tests |
-| 2 | Persist and isolate user workflows | Planned | 1 | API/database integration and recovery tests |
+| 1 | Model plans, approvals, and operation lifecycles | Done | 0 | [Merged in #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1); 98 offline tests, local and CI checks green |
+| 2 | Persist and isolate user workflows | In Progress | 1 | Migrations, ownership-enforcing repositories, concurrency and recovery tests |
 | 3 | Add grounded reasoning and personal memory | Planned | 2 | Retrieval, memory, and orchestration evaluations |
 | 4 | Deliver the conversational web experience | Planned | 3 | Accessible journeys and cancellation/reconnect checks |
 | 5 | Execute verified calendar changes | Planned | 4 | Live test-account flow and ambiguous-write recovery |
@@ -55,8 +54,7 @@ Review: 12 initial files were published; local documentation-link and English-co
 
 ## Sprint 1: Tested domain foundation
 
-Status: In Progress. Implementation is in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1) and awaiting
-review. Tasks remain In Progress until the change is on main.
+Status: Done. Merged in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1) as `e00c949`.
 
 Goal: implement deterministic plan and approval behavior that future model and calendar adapters must obey.
 
@@ -64,13 +62,13 @@ Scope: backend domain package, development tooling, offline tests, reproducible 
 
 | Task | Deliverable | Acceptance criteria | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| S1-01 | Runtime/tooling decision and package setup | Record supported Python version and strict type-checking choice; lock dependencies; document reproducible installation and verification commands | In Progress | Python 3.12 pinned in `.python-version`; `pyproject.toml` and `uv.lock`; rationale in [ADR 0001](decisions/0001-python-runtime-and-tooling.md) |
-| S1-02 | Typed plans and revisions | No framework/SDK dependencies in domain code; revisions preserve unrelated constraints and completed history; invalid input and stale edits are rejected | In Progress | `domain/plans.py`, `domain/constraints.py`, `domain/validation.py`; `tests/test_plans.py`, `tests/test_validation.py` |
-| S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | In Progress | `domain/approvals.py`, `domain/actions.py`; `tests/test_approvals.py`. Scope binds an action per item and the fingerprint covers it ([ADR 0003](decisions/0003-authorization-boundary.md)) |
-| S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | In Progress | `domain/operations.py`; `tests/test_operations.py`. Each entry point names its source state, and authorization is revalidated when work is claimed |
-| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | In Progress | 98 offline tests with synthetic fixtures and an injected fixed clock; `tests/test_scenario_first_journey.py` covers the product-scope journey; four review findings have regression tests |
-| S1-06 | Local and CI quality gates | Documented commands run formatting checks, linting, strict type checking, tests, and package build with locked dependencies; the same checks pass locally and on standard GitHub-hosted `ubuntu-latest`; record results; no paid runners or paid API calls | In Progress | `scripts/verify.sh` and `.github/workflows/ci.yml` run identical commands; both the local run and the [CI run on `ubuntu-latest`](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35530164477) passed, recorded below |
-| S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | In Progress | README implementation section, updated architecture, [ADR 0001](decisions/0001-python-runtime-and-tooling.md) and [ADR 0002](decisions/0002-first-class-constraints.md) |
+| S1-01 | Runtime/tooling decision and package setup | Record supported Python version and strict type-checking choice; lock dependencies; document reproducible installation and verification commands | Done | Python 3.12 pinned in `.python-version`; `pyproject.toml` and `uv.lock`; rationale in [ADR 0001](decisions/0001-python-runtime-and-tooling.md) |
+| S1-02 | Typed plans and revisions | No framework/SDK dependencies in domain code; revisions preserve unrelated constraints and completed history; invalid input and stale edits are rejected | Done | `domain/plans.py`, `domain/constraints.py`, `domain/validation.py`; `tests/test_plans.py`, `tests/test_validation.py` |
+| S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | Done | `domain/approvals.py`, `domain/actions.py`; `tests/test_approvals.py`. Scope binds an action per item and the fingerprint covers it ([ADR 0003](decisions/0003-authorization-boundary.md)) |
+| S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | Done | `domain/operations.py`; `tests/test_operations.py`. Each entry point names its source state, and authorization is revalidated when work is claimed |
+| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | Done | 98 offline tests with synthetic fixtures and an injected fixed clock; `tests/test_scenario_first_journey.py` covers the product-scope journey; four review findings have regression tests |
+| S1-06 | Local and CI quality gates | Documented commands run formatting checks, linting, strict type checking, tests, and package build with locked dependencies; the same checks pass locally and on standard GitHub-hosted `ubuntu-latest`; record results; no paid runners or paid API calls | Done | `scripts/verify.sh` and `.github/workflows/ci.yml` run identical commands; both the local run and the [CI run on `ubuntu-latest`](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35530164477) passed, recorded below |
+| S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | Done | README implementation section, updated architecture, [ADR 0001](decisions/0001-python-runtime-and-tooling.md) and [ADR 0002](decisions/0002-first-class-constraints.md) |
 
 Definition of Done: S1-01 through S1-07 pass acceptance, changes are on main, and the review records evidence. The domain package runs without a model provider, network, database, or personal data. Domain tests do not establish persistent recovery or live calendar reliability.
 
@@ -139,15 +137,72 @@ test against a real database. These domain tests establish deterministic
 contracts only. They do not establish persistent recovery, live calendar
 reliability, or clinical validity.
 
+### Sprint review
+
+Delivered: a standard-library-only domain package covering immutable plan
+versions with revision rules, first-class constraints with deterministic
+pre-approval validation, approvals bound to owner, version, payload, action, and
+action target, and an external operation lifecycle in which an unknown outcome
+must be reconciled before any retry. 98 offline tests, reproducible local and CI
+quality gates, and three decision records.
+
+Verification: recorded above. Two review rounds reported five P1 authorization
+defects; all five were reproduced before any change, fixed, and re-checked.
+Merged as `e00c949`.
+
+Unverified: persistent recovery, concurrent access, live calendar reliability,
+and clinical validity. None of these is claimed.
+
+Retrospective. The first implementation passed every check it had and still
+shipped a broken consent boundary. Two causes, both worth carrying forward:
+
+1. Each function validated only its own local preconditions, and nothing checked
+   that an operation, a plan, and an approval described one proposal. Shared
+   machinery, in this case the transition table, let one entry point perform
+   another's transition and skip its checks.
+2. The tests mirrored the shape of the code. Every function had its own failure
+   cases covered, and no test crossed two entry points, which is exactly where
+   all five defects lived.
+
+Action for Sprint 2 onward: alongside the per-unit tests, write adversarial
+probes that try to reach a protected state by an unintended path, and treat a
+passing suite as evidence about the paths it exercises rather than about the
+property it is named after. Recorded as task S2-07.
+
+Carryover: none. Blockers: none.
+
+## Sprint 2: Persistent service
+
+Status: In Progress.
+
+Goal: give the domain a durable home in which ownership is enforced on every
+access path and concurrent revisions cannot silently overwrite each other.
+
+Scope: PostgreSQL schema and migrations, repositories, a unit-of-work boundary,
+durable operations with worker leases, and a simulated provider. Excludes HTTP
+delivery, model providers, calendar credentials, and deployment infrastructure.
+
+| Task | Deliverable | Acceptance criteria | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| S2-01 | Persistence stack and test harness | Record the database, driver, and migration tool with alternatives; add a schema and a reversible initial migration; integration tests require an explicit database URL and are skipped without one; the default suite stays offline; CI runs both against a standard-runner service container | In Progress | Pending |
+| S2-02 | Plan persistence with version checks | Store plan versions and items losslessly, including time zones, attribute tokens, and completion status; a concurrent insert of the same version is rejected as a stale revision rather than merged | In Progress | Pending |
+| S2-03 | Ownership enforcement | Every repository read and write is scoped by owner; a cross-user identifier returns nothing rather than another user's row; no access path omits the owner | Planned | Pending |
+| S2-04 | Constraint and approval persistence | Round-trip constraints, approvals, approved actions, and their targets; a stored approval authorizes exactly what the in-memory one did | Planned | Pending |
+| S2-05 | Durable operations and worker leases | Persist the operation lifecycle; claim work with a lease so two workers cannot hold one operation; an expired lease returns work for reconciliation rather than marking it failed | Planned | Pending |
+| S2-06 | Restart and transaction boundaries | A failure mid-transaction leaves no partial plan version or half-queued operation; work in flight when a worker dies is recoverable after restart | Planned | Pending |
+| S2-07 | Adversarial path probes | Alongside per-unit tests, probes attempt to reach a protected state by an unintended path: cross-user access, a revision that skips the version check, and a claim that bypasses authorization. Carried from the Sprint 1 retrospective | Planned | Pending |
+| S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | Planned | Pending |
+
+Definition of Done: S2-01 through S2-08 pass acceptance, changes are on main, and
+the review records evidence. Integration results must state which ran locally and
+which ran in CI. A simulated provider is used throughout; live calendar
+integration remains Sprint 5.
+
 Review: pending. Blockers: none identified. Carryover: none.
 
 ## Later sprint outlines
 
 These outlines are not started tasks. Expand each into task IDs, acceptance criteria, and evidence fields before moving it to In Progress.
-
-### Sprint 2: Persistent service
-
-Deliver identity integration, ownership enforcement, migrations, plan persistence, version checks, durable operations, and worker leases. Verify cross-user denial, concurrent edits, expired leases, restart recovery, and transaction boundaries. Use a simulated provider; live calendar integration remains Sprint 5.
 
 ### Sprint 3: Evidence and memory
 
