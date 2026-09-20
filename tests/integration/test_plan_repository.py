@@ -1,7 +1,7 @@
 """Plan persistence: lossless round trips, ownership, and version conflicts."""
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from health_assistant.adapters.persistence import unit_of_work
 from health_assistant.domain.errors import OwnershipError, StalePlanRevisionError
@@ -14,17 +14,19 @@ from health_assistant.domain.plans import (
 )
 from tests.support import BASE_INSTANT, OTHER_USER, OWNER, PLAN, at, make_item, make_plan
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
-def _register(engine: Engine, *users: UserId) -> None:
-    with unit_of_work(engine) as work:
+async def _register(engine: AsyncEngine, *users: UserId) -> None:
+    async with unit_of_work(engine) as work:
         for user in users:
-            work.users.ensure(user_id=user, time_zone="America/Toronto", created_at=BASE_INSTANT)
+            await work.users.ensure(
+                user_id=user, time_zone="America/Toronto", created_at=BASE_INSTANT
+            )
 
 
-def test_a_plan_version_round_trips_without_losing_detail(engine: Engine) -> None:
-    _register(engine, OWNER)
+async def test_a_plan_version_round_trips_without_losing_detail(engine: AsyncEngine) -> None:
+    await _register(engine, OWNER)
     original = make_plan(
         make_item(
             "item-a",
@@ -35,16 +37,16 @@ def test_a_plan_version_round_trips_without_losing_detail(engine: Engine) -> Non
         make_item("item-b", start_hours=48, completion=CompletionStatus.COMPLETED),
     )
 
-    with unit_of_work(engine) as work:
-        work.plans.save(original)
-    with unit_of_work(engine) as work:
-        loaded = work.plans.get(owner_id=OWNER, plan_id=PLAN, version=1)
+    async with unit_of_work(engine) as work:
+        await work.plans.save(original)
+    async with unit_of_work(engine) as work:
+        loaded = await work.plans.get(owner_id=OWNER, plan_id=PLAN, version=1)
 
     assert loaded == original
 
 
-def test_latest_returns_the_highest_version(engine: Engine) -> None:
-    _register(engine, OWNER)
+async def test_latest_returns_the_highest_version(engine: AsyncEngine) -> None:
+    await _register(engine, OWNER)
     first = make_plan(make_item("item-a"))
     second = revise(
         first,
@@ -54,44 +56,45 @@ def test_latest_returns_the_highest_version(engine: Engine) -> None:
         now=at(hours=1),
     )
 
-    with unit_of_work(engine) as work:
-        work.plans.save(first)
-        work.plans.save(second)
-    with unit_of_work(engine) as work:
-        latest = work.plans.latest(owner_id=OWNER, plan_id=PLAN)
+    async with unit_of_work(engine) as work:
+        await work.plans.save(first)
+        await work.plans.save(second)
+    async with unit_of_work(engine) as work:
+        latest = await work.plans.latest(owner_id=OWNER, plan_id=PLAN)
 
     assert latest is not None
     assert latest.version == 2
     assert latest.item(PlanItemId("item-a")).title == "Morning walk"
 
 
-def test_another_user_reads_nothing(engine: Engine) -> None:
-    _register(engine, OWNER, OTHER_USER)
-    with unit_of_work(engine) as work:
-        work.plans.save(make_plan(make_item("item-a")))
+async def test_another_user_reads_nothing(engine: AsyncEngine) -> None:
+    await _register(engine, OWNER, OTHER_USER)
+    async with unit_of_work(engine) as work:
+        await work.plans.save(make_plan(make_item("item-a")))
 
-    with unit_of_work(engine) as work:
-        assert work.plans.get(owner_id=OTHER_USER, plan_id=PLAN, version=1) is None
-        assert work.plans.latest(owner_id=OTHER_USER, plan_id=PLAN) is None
-        assert work.plans.latest(owner_id=OWNER, plan_id=PLAN) is not None
+    async with unit_of_work(engine) as work:
+        assert await work.plans.get(owner_id=OTHER_USER, plan_id=PLAN, version=1) is None
+        assert await work.plans.latest(owner_id=OTHER_USER, plan_id=PLAN) is None
+        assert await work.plans.latest(owner_id=OWNER, plan_id=PLAN) is not None
 
 
-def test_writing_into_another_users_plan_is_refused(engine: Engine) -> None:
-    _register(engine, OWNER, OTHER_USER)
-    with unit_of_work(engine) as work:
-        work.plans.save(make_plan(make_item("item-a")))
+async def test_writing_into_another_users_plan_is_refused(engine: AsyncEngine) -> None:
+    await _register(engine, OWNER, OTHER_USER)
+    async with unit_of_work(engine) as work:
+        await work.plans.save(make_plan(make_item("item-a")))
 
     intruder = make_plan(make_item("item-a"), owner=OTHER_USER)
-    with pytest.raises(OwnershipError), unit_of_work(engine) as work:
-        work.plans.save(intruder)
+    with pytest.raises(OwnershipError):
+        async with unit_of_work(engine) as work:
+            await work.plans.save(intruder)
 
 
-def test_two_revisions_of_one_base_cannot_both_be_stored(engine: Engine) -> None:
+async def test_two_revisions_of_one_base_cannot_both_be_stored(engine: AsyncEngine) -> None:
     """The lost-update case: both clients read version 1 and both write version 2."""
-    _register(engine, OWNER)
+    await _register(engine, OWNER)
     base = make_plan(make_item("item-a"))
-    with unit_of_work(engine) as work:
-        work.plans.save(base)
+    async with unit_of_work(engine) as work:
+        await work.plans.save(base)
 
     first = revise(
         base,
@@ -108,26 +111,28 @@ def test_two_revisions_of_one_base_cannot_both_be_stored(engine: Engine) -> None
         now=at(hours=2),
     )
 
-    with unit_of_work(engine) as work:
-        work.plans.save(first)
+    async with unit_of_work(engine) as work:
+        await work.plans.save(first)
 
-    with pytest.raises(StalePlanRevisionError) as caught, unit_of_work(engine) as work:
-        work.plans.save(second)
+    with pytest.raises(StalePlanRevisionError) as caught:
+        async with unit_of_work(engine) as work:
+            await work.plans.save(second)
     assert caught.value.actual == 2
 
-    with unit_of_work(engine) as work:
-        latest = work.plans.latest(owner_id=OWNER, plan_id=PLAN)
+    async with unit_of_work(engine) as work:
+        latest = await work.plans.latest(owner_id=OWNER, plan_id=PLAN)
     assert latest is not None
     assert latest.item(PlanItemId("item-a")).title == "Morning walk"
 
 
-def test_a_failed_transaction_stores_nothing(engine: Engine) -> None:
-    _register(engine, OWNER)
+async def test_a_failed_transaction_stores_nothing(engine: AsyncEngine) -> None:
+    await _register(engine, OWNER)
     failure = RuntimeError("interrupted midway")
 
-    with pytest.raises(RuntimeError), unit_of_work(engine) as work:
-        work.plans.save(make_plan(make_item("item-a")))
-        raise failure
+    with pytest.raises(RuntimeError):
+        async with unit_of_work(engine) as work:
+            await work.plans.save(make_plan(make_item("item-a")))
+            raise failure
 
-    with unit_of_work(engine) as work:
-        assert work.plans.latest(owner_id=OWNER, plan_id=PLAN) is None
+    async with unit_of_work(engine) as work:
+        assert await work.plans.latest(owner_id=OWNER, plan_id=PLAN) is None

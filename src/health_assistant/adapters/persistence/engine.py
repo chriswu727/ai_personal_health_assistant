@@ -1,18 +1,18 @@
 """Engine construction and the transactional boundary."""
 
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from sqlalchemy import Connection, Engine, create_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from health_assistant.adapters.persistence.plans import SqlPlanRepository
 from health_assistant.adapters.persistence.users import SqlUserRepository
 
 
-def create_database_engine(url: str) -> Engine:
+def create_database_engine(url: str) -> AsyncEngine:
     """Return an engine whose sessions report timestamps in UTC."""
-    return create_engine(
+    return create_async_engine(
         url,
         pool_pre_ping=True,
         connect_args={"options": "-c timezone=UTC"},
@@ -23,7 +23,7 @@ def create_database_engine(url: str) -> Engine:
 class SqlUnitOfWork:
     """The repositories spanning one transaction."""
 
-    connection: Connection
+    connection: AsyncConnection
 
     @property
     def plans(self) -> SqlPlanRepository:
@@ -34,8 +34,8 @@ class SqlUnitOfWork:
         return SqlUserRepository(self.connection)
 
 
-@contextmanager
-def unit_of_work(engine: Engine) -> Iterator[SqlUnitOfWork]:
+@asynccontextmanager
+async def unit_of_work(engine: AsyncEngine) -> AsyncIterator[SqlUnitOfWork]:
     """Run a block inside one transaction, committing only if it returns."""
-    with engine.begin() as connection:
+    async with engine.begin() as connection:
         yield SqlUnitOfWork(connection=connection)

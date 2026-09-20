@@ -22,10 +22,12 @@ asynchronous, and how database tests run locally and in CI.
 - **psycopg alone with hand-written SQL and a home-grown migration runner.**
   Fewer dependencies and full control, but re-implements schema versioning,
   which is the part with the most ways to go quietly wrong.
-- **An asynchronous stack now.** The architecture anticipates streaming
-  responses and bounded provider concurrency, so async will eventually be
-  justified. Nothing in this slice demonstrates that requirement yet, and the
-  repository standards forbid adding machinery before the requirement is shown.
+- **A synchronous stack, deferring async until the delivery layer needs it.**
+  Simpler to read and to test, and nothing in this slice demonstrates a
+  concurrency requirement on its own. Rejected: `async` is viral through call
+  sites, so deferring means rewriting every adapter, repository, and application
+  service later rather than writing them once. The cost of the change grows with
+  the amount of code above it, and that code has not been written yet.
 - **SQLite for tests, PostgreSQL in production.** Tests would run anywhere with
   no service. It would also test a different database: no `ON CONFLICT` row-count
   semantics, no `timestamptz`, no array columns, and different locking. The
@@ -39,12 +41,16 @@ metadata, and query construction, not as an object-relational mapper: domain
 objects are converted in one mapping module that is the only code aware of both
 shapes.
 
-The stack is synchronous. This slice has no HTTP layer and no concurrent I/O
-requirement to demonstrate, and a polling worker holding a lease is a workload
-synchronous code serves well. The trigger for revisiting is the delivery layer
-in Sprint 4: if it needs streaming responses, the adapters move to the
-asynchronous API and a superseding record says so. The domain stays synchronous
-either way, because it performs no I/O.
+The stack is asynchronous: `create_async_engine`, `AsyncConnection`, and
+psycopg's async API, with Alembic driving migrations through `run_sync` on an
+async engine. The architecture already commits to streaming responses and to
+bounded provider concurrency per user and per provider, both of which are
+asynchronous by nature, and every adapter and application service written
+between now and then would otherwise have to be converted.
+
+The domain stays synchronous and performs no I/O, so this decision does not
+reach the tested core. That boundary is what makes the choice cheap: the 98
+domain tests are unaffected by it.
 
 Database tests are marked `integration` and read
 `HEALTH_ASSISTANT_TEST_DATABASE_URL`. They skip when it is unset, which keeps
@@ -65,6 +71,12 @@ Contributors need PostgreSQL to run the database tests. Those who do not have it
 still get a green offline suite, and CI covers what they skipped. The cost is
 that a local pass is weaker evidence than a CI pass, so delivery evidence must
 record which tests ran where.
+
+SQLAlchemy's async support requires `greenlet`, which the `asyncio` extra pulls
+in. Anything that calls into the database must be awaited, including test
+fixtures, and Alembic's own entry point runs `asyncio.run`, so async callers
+reach it through a worker thread. These are the ordinary costs of the choice and
+are visible in `tests/integration/conftest.py`.
 
 Using `ON CONFLICT DO NOTHING` with a row-count check, rather than catching an
 integrity error, keeps the transaction usable after a conflict. An aborted

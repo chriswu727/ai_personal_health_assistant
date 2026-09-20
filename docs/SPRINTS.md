@@ -206,16 +206,23 @@ Part one is in [pull request #2](https://github.com/chriswu727/ai_personal_healt
 | --- | --- | --- |
 | Format, lint, mypy strict | Local and CI | Pass, 53 files, 33 source files |
 | Offline tests | Local and CI | Pass, 98 tests |
-| Database tests | **CI only** | Pass, 8 tests against `postgres:17` |
+| Database tests | Local and CI | Pass, 8 tests against PostgreSQL 17 |
 | Build | Local and CI | Pass, sdist and wheel |
 
-[CI run](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35537147290). The database tests did not run locally: this machine has no
-PostgreSQL and no container runtime, so they skipped there. CI was their first
-execution, and the first run failed. `save` detected a version conflict from the
-reported row count of an `ON CONFLICT DO NOTHING` insert, which is not a
-guaranteed signal; the conflict went unnoticed and the failure surfaced later as
-a plan-item primary key violation. Detection now uses `RETURNING`, which yields
-no row on a conflict. The offline suite could not have caught this, and did not.
+Local run on macOS 15.7.4 arm64, Python 3.12.13, against PostgreSQL 17 in a
+container: 106 tests pass with the database configured, and 98 pass with 8
+skipped without it. CI runs the same tests against a `postgres:17` service
+container.
+
+Two defects were found only because the tests run against a real PostgreSQL
+server rather than a substitute. The first: `save` detected a version conflict
+from the reported row count of an `ON CONFLICT DO NOTHING` insert, which is not
+a guaranteed signal, so the conflict went unnoticed and surfaced later as a
+plan-item primary key violation. Detection now uses `RETURNING`. The second:
+SQLAlchemy's async support requires `greenlet`, which no type check or offline
+test would have revealed. Both support the decision in
+[ADR 0004](decisions/0004-persistence-stack.md) to reject a substitute database
+for tests.
 
 Not run: any live provider call, any overlapping-transaction test, worker leases,
 and restart recovery. Those are S2-05 and S2-06.

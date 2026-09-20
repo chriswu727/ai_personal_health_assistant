@@ -6,13 +6,15 @@ misconfigured run cannot look like a passing one.
 """
 
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, text
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from health_assistant.adapters.persistence import create_database_engine
 
@@ -28,6 +30,21 @@ def alembic_config(database_url: str) -> Config:
     return config
 
 
+def upgrade_database(database_url: str, revision: str = "head") -> None:
+    """Migrate up.
+
+    Alembic's environment drives an async engine through ``asyncio.run``, which
+    cannot be called while a loop is already running. Async callers must reach
+    this through ``asyncio.to_thread``.
+    """
+    command.upgrade(alembic_config(database_url), revision)
+
+
+def downgrade_database(database_url: str, revision: str) -> None:
+    """Migrate down, with the same threading requirement as ``upgrade_database``."""
+    command.downgrade(alembic_config(database_url), revision)
+
+
 @pytest.fixture(scope="session")
 def database_url() -> str:
     url = os.environ.get(URL_VARIABLE)
@@ -37,15 +54,15 @@ def database_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def engine(database_url: str) -> Iterator[Engine]:
-    command.upgrade(alembic_config(database_url), "head")
-    engine = create_database_engine(database_url)
+def migrated_database(database_url: str) -> str:
+    upgrade_database(database_url)
+    return database_url
+
+
+@pytest_asyncio.fixture
+async def engine(migrated_database: str) -> AsyncIterator[AsyncEngine]:
+    engine = create_database_engine(migrated_database)
+    async with engine.begin() as connection:
+        await connection.execute(text(f"TRUNCATE {OWNED_TABLES} RESTART IDENTITY CASCADE"))
     yield engine
-    engine.dispose()
-
-
-@pytest.fixture(autouse=True)
-def clean_tables(engine: Engine) -> Iterator[None]:
-    with engine.begin() as connection:
-        connection.execute(text(f"TRUNCATE {OWNED_TABLES} RESTART IDENTITY CASCADE"))
-    yield
+    await engine.dispose()

@@ -17,7 +17,8 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
 Closed Sprint 1 on the board with a review and retrospective, refined Sprint 2
 into tasks S2-01 through S2-08, and implemented part one: the PostgreSQL schema,
 the initial Alembic migration, a plan repository, a minimal user repository, and
-the transactional boundary. Ownership is a query predicate on every read, and a
+the transactional boundary, all asynchronous. Ownership is a query predicate on
+every read, and a
 plan version's primary key makes a lost update a rejected write rather than a
 silent overwrite. See [ADR 0004](decisions/0004-persistence-stack.md).
 
@@ -25,21 +26,17 @@ In [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/
 
 ## Verification
 
-Local run on macOS 15.7.4 arm64 with Python 3.12.13:
+Local run on macOS 15.7.4 arm64 with Python 3.12.13, against PostgreSQL 17 in a
+container:
 
 - `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`: passed,
   53 files, 33 source files, strict mode.
-- `uv run pytest`: 98 passed, 8 skipped. The skips are the database tests.
+- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 106 passed.
+- `uv run pytest` without it: 98 passed, 8 skipped, which are the database tests.
 - `uv build`: passed.
 
-CI additionally ran the 8 database tests against a `postgres:17` service
-container: all passed. [CI run](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35537147290).
-
-**No database test has ever run on this machine.** There is no PostgreSQL and no
-container runtime here, so local results say nothing about persistence. Read the
-`integration` job for that. Its first execution failed and found a real defect:
-a version conflict was detected from an insert's reported row count, which is
-not a guaranteed signal.
+CI runs the same checks, with the database tests against a `postgres:17` service
+container. [Pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2).
 
 Not run: any live provider call, overlapping-transaction tests, worker leases,
 and restart recovery.

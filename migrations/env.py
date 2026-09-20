@@ -4,11 +4,13 @@ The database URL comes from the Alembic config when a caller sets it, and from
 ``HEALTH_ASSISTANT_DATABASE_URL`` otherwise. It is never committed.
 """
 
+import asyncio
 import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import create_engine, pool
+from sqlalchemy import Connection, pool
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from health_assistant.adapters.persistence.schema import metadata
 
@@ -41,16 +43,23 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    engine = create_engine(database_url(), poolclass=pool.NullPool)
-    with engine.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
-    engine.dispose()
+def run_migrations(connection: Connection) -> None:
+    """Run the migrations against an already-open synchronous connection."""
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online() -> None:
+    engine = create_async_engine(database_url(), poolclass=pool.NullPool)
+    try:
+        async with engine.connect() as connection:
+            await connection.run_sync(run_migrations)
+    finally:
+        await engine.dispose()
 
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online()
+    asyncio.run(run_migrations_online())
