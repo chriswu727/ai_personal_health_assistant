@@ -55,8 +55,8 @@ Review: 12 initial files were published; local documentation-link and English-co
 
 ## Sprint 1: Tested domain foundation
 
-Status: In Progress. Implementation is on the `sprint-1/domain-foundation` branch
-and awaiting review. Tasks remain In Progress until the change is on main.
+Status: In Progress. Implementation is in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1) and awaiting
+review. Tasks remain In Progress until the change is on main.
 
 Goal: implement deterministic plan and approval behavior that future model and calendar adapters must obey.
 
