@@ -1,8 +1,10 @@
 # Architecture
 
-Status: the domain layer is implemented and tested in `src/health_assistant/domain`.
-Application services, persistence, delivery, and every adapter remain proposed
-design with no runtime components.
+Status: the domain layer and the first persistence adapter are implemented and
+tested (`src/health_assistant/domain`, `src/health_assistant/adapters/persistence`:
+users, plans, plan versions, and plan items). Constraint, approval, and operation
+storage, the worker, delivery, model providers, and calendar execution remain
+proposed design with no runtime components.
 
 ## System shape
 
@@ -33,7 +35,13 @@ Use explicit interfaces at external boundaries. Do not abstract every function o
 
 Keep User, Consent, MemoryFact, Observation, Goal, Constraint, PlanVersion, PlanItem, EvidenceReference, Approval, ToolOperation, and ExternalResourceMapping distinct. User-owned entities carry an owner identifier enforced at every access path. Memory records include provenance, observed/recorded time, validity, and confirmation status. Store UTC instants with IANA time-zone context for schedules; retain original units and measurement times for observations.
 
-Plans reference the facts and evidence used to produce them. Inferred preferences remain proposals until confirmed. Concurrent edits use version checks. Export and deletion include derived retrieval records and cached user context, with separately documented backup retention.
+Plans reference the facts and evidence used to produce them. Inferred preferences remain proposals until confirmed. Concurrent edits use version checks.
+
+A plan version is identified by its plan and version number, and carries the
+version it revises. A successor is only valid on top of its own stored parent,
+which the schema enforces with a self-referencing foreign key so that no code
+path can create a version whose history is missing. Uniqueness alone would
+accept version 3 written directly onto version 1. Export and deletion include derived retrieval records and cached user context, with separately documented backup retention.
 
 ## Constraint validation
 

@@ -5,8 +5,9 @@ set, a connection or migration failure is an error rather than a skip, so a
 misconfigured run cannot look like a passing one.
 """
 
+import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,10 @@ from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from health_assistant.adapters.persistence import create_database_engine
+from health_assistant.adapters.persistence import (
+    create_database_engine,
+    database_event_loop_policy,
+)
 
 URL_VARIABLE = "HEALTH_ASSISTANT_TEST_DATABASE_URL"
 OWNED_TABLES = "plan_items, plan_versions, plans, users"
@@ -43,6 +47,15 @@ def upgrade_database(database_url: str, revision: str = "head") -> None:
 def downgrade_database(database_url: str, revision: str) -> None:
     """Migrate down, with the same threading requirement as ``upgrade_database``."""
     command.downgrade(alembic_config(database_url), revision)
+
+
+def pytest_asyncio_loop_factories() -> dict[str, Callable[[], asyncio.AbstractEventLoop]]:
+    """Give pytest-asyncio a loop psycopg accepts.
+
+    The Windows default is a ProactorEventLoop, which psycopg's async mode
+    refuses before it ever reaches the server.
+    """
+    return {"database": database_event_loop_policy().new_event_loop}
 
 
 @pytest.fixture(scope="session")

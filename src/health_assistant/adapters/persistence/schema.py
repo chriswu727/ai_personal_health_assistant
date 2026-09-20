@@ -54,8 +54,15 @@ plan_versions = Table(
         name="ck_plan_versions_first_has_no_parent",
     ),
     CheckConstraint(
-        "parent_version IS NULL OR parent_version < version",
-        name="ck_plan_versions_parent_precedes",
+        "parent_version IS NULL OR parent_version = version - 1",
+        name="ck_plan_versions_parent_is_predecessor",
+    ),
+    # Self-referencing: a successor cannot exist without the version it revises.
+    # A NULL parent is not matched, so the first version is exempt.
+    ForeignKeyConstraint(
+        ["plan_id", "parent_version"],
+        ["plan_versions.plan_id", "plan_versions.version"],
+        name="fk_plan_versions_parent",
     ),
     Index("ix_plan_versions_owner_id", "owner_id"),
 )

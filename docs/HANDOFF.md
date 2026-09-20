@@ -6,8 +6,12 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
 
 - Canonical repository: `chriswu727/ai_personal_health_assistant`.
 - Sprint 0 foundation: Done. Sprint 1 domain slice: Done, merged as `e00c949`.
-- Sprint 2: In Progress on `sprint-2/persistence-foundation`. Tasks S2-01 and
-  S2-02 are underway; S2-03 through S2-08 are Planned.
+- Sprint 2: In Progress on `sprint-2/persistence-foundation`. Tasks S2-01, S2-02
+  and S2-03 are underway in [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2);
+  S2-04 through S2-08 are Planned.
+- Storage: PostgreSQL through asynchronous SQLAlchemy and psycopg, with Alembic
+  migrations. Users, plans, plan versions, and plan items are persisted;
+  constraints, approvals, and operations are not yet.
 - Runtime and checks: Python 3.12 pinned, dependencies locked with `uv`, and
   format, lint, strict type, test, and build gates running locally through
   `./scripts/verify.sh` and in GitHub Actions on `ubuntu-latest`.
@@ -54,7 +58,8 @@ retrospective.
 
 No blocker is known. Constraint matching is exact on declared attributes and
 does not infer that one ingredient implies another; an ingredient taxonomy
-belongs to Sprint 3. There is no runnable app, live calendar integration,
-evaluation result, or production-readiness claim. Do not mark Sprint 1 tasks
-complete until the change is on main and their individual acceptance criteria
-pass.
+belongs to Sprint 3. Overlapping-transaction behavior, worker leases, and
+restart recovery are not yet covered; they are S2-05 and S2-06. There is no
+runnable app, live calendar integration, evaluation result, or
+production-readiness claim. Do not mark a Sprint 2 task complete until the
+change is on main and its individual acceptance criteria pass.

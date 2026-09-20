@@ -1,9 +1,12 @@
 """Plan persistence: lossless round trips, ownership, and version conflicts."""
 
 import pytest
+from sqlalchemy import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from health_assistant.adapters.persistence import unit_of_work
+from health_assistant.adapters.persistence.schema import plan_versions
 from health_assistant.domain.errors import OwnershipError, StalePlanRevisionError
 from health_assistant.domain.identifiers import PlanItemId, UserId
 from health_assistant.domain.plans import (
@@ -117,7 +120,9 @@ async def test_two_revisions_of_one_base_cannot_both_be_stored(engine: AsyncEngi
     with pytest.raises(StalePlanRevisionError) as caught:
         async with unit_of_work(engine) as work:
             await work.plans.save(second)
-    assert caught.value.actual == 2
+    # The loser's base was version 1, not version 2; reporting 2 for both would
+    # read as "expected plan version 2, found 2".
+    assert (caught.value.expected, caught.value.actual) == (1, 2)
 
     async with unit_of_work(engine) as work:
         latest = await work.plans.latest(owner_id=OWNER, plan_id=PLAN)
@@ -136,3 +141,78 @@ async def test_a_failed_transaction_stores_nothing(engine: AsyncEngine) -> None:
 
     async with unit_of_work(engine) as work:
         assert await work.plans.latest(owner_id=OWNER, plan_id=PLAN) is None
+
+
+async def test_a_successor_without_its_persisted_parent_is_refused(engine: AsyncEngine) -> None:
+    """Key uniqueness alone would accept version 3 written straight onto version 1."""
+    await _register(engine, OWNER)
+    first = make_plan(make_item("item-a"))
+    second = revise(
+        first,
+        actor_id=OWNER,
+        expected_version=1,
+        changes=[ReplaceItem(make_item("item-a", title="Morning walk"))],
+        now=at(hours=1),
+    )
+    third = revise(
+        second,
+        actor_id=OWNER,
+        expected_version=2,
+        changes=[ReplaceItem(make_item("item-a", title="Evening swim"))],
+        now=at(hours=2),
+    )
+
+    async with unit_of_work(engine) as work:
+        await work.plans.save(first)
+
+    with pytest.raises(StalePlanRevisionError) as caught:
+        async with unit_of_work(engine) as work:
+            await work.plans.save(third)
+    assert (caught.value.expected, caught.value.actual) == (2, 1)
+
+    async with unit_of_work(engine) as work:
+        latest = await work.plans.latest(owner_id=OWNER, plan_id=PLAN)
+    assert latest is not None
+    assert latest.version == 1
+
+
+async def test_a_successor_cannot_open_an_empty_plan(engine: AsyncEngine) -> None:
+    await _register(engine, OWNER)
+    second = revise(
+        make_plan(make_item("item-a")),
+        actor_id=OWNER,
+        expected_version=1,
+        changes=[ReplaceItem(make_item("item-a", title="Morning walk"))],
+        now=at(hours=1),
+    )
+
+    with pytest.raises(StalePlanRevisionError) as caught:
+        async with unit_of_work(engine) as work:
+            await work.plans.save(second)
+    assert (caught.value.expected, caught.value.actual) == (1, 0)
+
+    async with unit_of_work(engine) as work:
+        assert await work.plans.latest(owner_id=OWNER, plan_id=PLAN) is None
+
+
+async def test_the_schema_rejects_an_orphan_successor(engine: AsyncEngine) -> None:
+    """Ancestry is a database fact, not only a repository convention.
+
+    This writes through the connection rather than the repository, so a future
+    code path that forgets the check still cannot create an orphan version.
+    """
+    await _register(engine, OWNER)
+    async with unit_of_work(engine) as work:
+        await work.plans.save(make_plan(make_item("item-a")))
+
+    with pytest.raises(IntegrityError):
+        async with unit_of_work(engine) as work:
+            await work.connection.execute(
+                insert(plan_versions).values(
+                    plan_id=PLAN,
+                    version=3,
+                    owner_id=OWNER,
+                    parent_version=2,
+                    created_at=BASE_INSTANT,
+                )
+            )

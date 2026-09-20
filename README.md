@@ -2,8 +2,9 @@
 
 A personal AI assistant for evidence-informed exercise, nutrition, sleep, and daily routines, with user-controlled memory and verified calendar actions.
 
-**Status: tested domain package. There is no application, web interface, persistence,
-calendar integration, clinical validation, or deployed service yet.**
+**Status: tested domain package with database-backed plan storage. There is no
+application, web interface, calendar integration, clinical validation, or
+deployed service yet.**
 
 This engineering portfolio project explores a practical question: how can an assistant turn a changing personal goal into an actionable plan while preserving user constraints, explaining its evidence, and recovering correctly when an external service fails?
 
@@ -78,6 +79,11 @@ enforced in code and covered by offline tests:
   an event never authorizes cancelling one. Authorization is checked again at
   the execution boundary, so a confirmation that expires or is revoked while the
   work sits in the queue stops it.
+- **Stored plans keep their history and their isolation.** Plan versions live in
+  PostgreSQL behind repositories that scope every read to the owner, so a
+  request for another user's plan returns nothing. A version is identified by
+  its plan and version number and must be written onto its own stored parent, so
+  a lost update is a rejected write rather than a silent overwrite.
 - **An unknown outcome is not a failure.** A lost response or an expired worker
   lease moves an operation to `outcome_unknown`, from which only reconciliation
   against the provider produces a terminal state. Retrying it directly raises
@@ -109,5 +115,7 @@ Run every quality gate exactly as CI runs it:
 ./scripts/verify.sh
 ```
 
-There is no application to start. The next deliverable is Sprint 2, which adds
-persistence and ownership enforcement around this domain package.
+Database tests need PostgreSQL and are skipped without it; see
+[Contributing](CONTRIBUTING.md). There is no application to start. Sprint 2 is in
+progress: plan storage is in place, and durable operations with worker leases
+are next.

@@ -198,31 +198,44 @@ the review records evidence. Integration results must state which ran locally an
 which ran in CI. A simulated provider is used throughout; live calendar
 integration remains Sprint 5.
 
-### Verification, part one
+### Review round 1, part one
 
-Part one is in [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2) and awaiting review.
+Review of [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2) reported three defects and a documentation
+inconsistency. All three were reproduced before any change:
+
+| Finding | Reproduced behavior | Resolution |
+| --- | --- | --- |
+| Ancestry was never checked | Saving version 3 onto a stored version 1 succeeded, and version 2 could open an empty plan, leaving a version with no persisted history | `save` requires the successor's own stored parent, and a self-referencing foreign key enforces it in the schema so no future code path can bypass it |
+| The stale-revision error contradicted itself | The loser of a concurrent revision was told "expected plan version 2, found 2" | The error now reports the base version the writer actually revised |
+| Windows could not run the database path | psycopg's async mode rejects the ProactorEventLoop, the Windows default, before reaching the server | Entry points select a selector loop; an offline test asserts the chosen loop is never a proactor loop, so a Windows run cannot mask it |
+
+The domain invariant was tightened alongside the schema: a version's parent must
+be the version immediately before it, so the rule is one rule rather than two
+that could drift.
+
+Documentation was out of step with the code: the README and architecture still
+said persistence did not exist, the handoff disagreed with the board, and two
+places described the earlier row-count conflict detection. All are corrected.
+
+### Verification, part one
 
 | Check | Where | Result |
 | --- | --- | --- |
-| Format, lint, mypy strict | Local and CI | Pass, 53 files, 33 source files |
-| Offline tests | Local and CI | Pass, 98 tests |
-| Database tests | Local and CI | Pass, 8 tests against PostgreSQL 17 |
+| Format, lint, mypy strict | Local and CI | Pass, 35 source files |
+| Offline tests | Local and CI | Pass, 101 tests |
+| Database tests | Local and CI | Pass, 11 tests against PostgreSQL 17 |
 | Build | Local and CI | Pass, sdist and wheel |
 
 Local run on macOS 15.7.4 arm64, Python 3.12.13, against PostgreSQL 17 in a
-container: 106 tests pass with the database configured, and 98 pass with 8
-skipped without it. CI runs the same tests against a `postgres:17` service
-container.
+container: 112 tests pass with the database configured, and 101 pass with 11
+skipped without it. The database was dropped and recreated first, so the
+migration was applied from empty rather than onto an already-migrated schema.
 
-Two defects were found only because the tests run against a real PostgreSQL
-server rather than a substitute. The first: `save` detected a version conflict
-from the reported row count of an `ON CONFLICT DO NOTHING` insert, which is not
-a guaranteed signal, so the conflict went unnoticed and surfaced later as a
-plan-item primary key violation. Detection now uses `RETURNING`. The second:
-SQLAlchemy's async support requires `greenlet`, which no type check or offline
-test would have revealed. Both support the decision in
-[ADR 0004](decisions/0004-persistence-stack.md) to reject a substitute database
-for tests.
+Three defects in this sprint were found only because the tests run against a
+real PostgreSQL server rather than a substitute: the row-count conflict signal,
+the missing `greenlet` dependency, and the schema drift left by amending an
+already-applied migration. Each supports the decision in
+[ADR 0004](decisions/0004-persistence-stack.md) to reject a substitute database.
 
 Not run: any live provider call, any overlapping-transaction test, worker leases,
 and restart recovery. Those are S2-05 and S2-06.

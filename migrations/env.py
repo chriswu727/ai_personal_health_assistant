@@ -4,7 +4,6 @@ The database URL comes from the Alembic config when a caller sets it, and from
 ``HEALTH_ASSISTANT_DATABASE_URL`` otherwise. It is never committed.
 """
 
-import asyncio
 import os
 from logging.config import fileConfig
 
@@ -12,6 +11,7 @@ from alembic import context
 from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from health_assistant.adapters.persistence.event_loops import run
 from health_assistant.adapters.persistence.schema import metadata
 
 config = context.config
@@ -62,4 +62,4 @@ async def run_migrations_online() -> None:
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    run(run_migrations_online())

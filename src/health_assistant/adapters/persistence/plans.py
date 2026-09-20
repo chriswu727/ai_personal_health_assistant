@@ -22,6 +22,9 @@ from health_assistant.domain.errors import OwnershipError, StalePlanRevisionErro
 from health_assistant.domain.identifiers import PlanId, UserId
 from health_assistant.domain.plans import PlanVersion
 
+# The base version an initial plan version is written onto: none stored yet.
+_NO_VERSION = 0
+
 
 class SqlPlanRepository:
     """Plan persistence scoped to one transaction."""
@@ -31,8 +34,17 @@ class SqlPlanRepository:
 
     async def save(self, version: PlanVersion) -> None:
         await self._ensure_plan(version)
+
+        # A successor is only acceptable on top of its own persisted parent.
+        # Key uniqueness alone would accept version 3 written onto version 1.
+        base = version.parent_version or _NO_VERSION
+        stored = await self._highest_version(version.plan_id)
+        if base != stored:
+            raise StalePlanRevisionError(expected=base, actual=stored)
+
         # RETURNING rather than rowcount: an INSERT's reported row count is not
         # guaranteed to be meaningful, while a DO NOTHING conflict returns no row.
+        # This is the concurrent case, where another writer committed in between.
         result = await self._connection.execute(
             insert(plan_versions)
             .values(plan_version_row(version))
@@ -41,7 +53,7 @@ class SqlPlanRepository:
         )
         if result.scalar_one_or_none() is None:
             raise StalePlanRevisionError(
-                expected=version.version, actual=await self._highest_version(version.plan_id)
+                expected=base, actual=await self._highest_version(version.plan_id)
             )
         items = plan_item_rows(version)
         if items:

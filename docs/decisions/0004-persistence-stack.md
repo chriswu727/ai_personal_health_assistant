@@ -29,9 +29,10 @@ asynchronous, and how database tests run locally and in CI.
   service later rather than writing them once. The cost of the change grows with
   the amount of code above it, and that code has not been written yet.
 - **SQLite for tests, PostgreSQL in production.** Tests would run anywhere with
-  no service. It would also test a different database: no `ON CONFLICT` row-count
-  semantics, no `timestamptz`, no array columns, and different locking. The
-  concurrency guarantees under test are exactly the ones that differ.
+  no service. It would also test a different database: different `ON CONFLICT`
+  and `RETURNING` behavior, no `timestamptz`, no array columns, and different
+  locking. The concurrency guarantees under test are exactly the ones that
+  differ.
 
 ## Decision
 
@@ -78,10 +79,12 @@ fixtures, and Alembic's own entry point runs `asyncio.run`, so async callers
 reach it through a worker thread. These are the ordinary costs of the choice and
 are visible in `tests/integration/conftest.py`.
 
-Using `ON CONFLICT DO NOTHING` with a row-count check, rather than catching an
-integrity error, keeps the transaction usable after a conflict. An aborted
-transaction cannot answer what the current version is, which is the one fact the
-stale-revision error needs to report.
+Conflicts are detected with `ON CONFLICT DO NOTHING ... RETURNING` rather than by
+catching an integrity error. An aborted transaction cannot answer what the
+current version is, which is the one fact the stale-revision error needs to
+report. A row count was tried first and was wrong: an INSERT's reported count is
+not a guaranteed signal, so the conflict went unnoticed until it surfaced as an
+unrelated key violation.
 
 Keeping SQLAlchemy at Core level means writing an explicit mapping module. That
 is the intended cost: it is the only place that knows both the row shape and the

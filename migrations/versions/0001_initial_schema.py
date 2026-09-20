@@ -43,10 +43,15 @@ def upgrade() -> None:
             name="ck_plan_versions_first_has_no_parent",
         ),
         sa.CheckConstraint(
-            "parent_version IS NULL OR parent_version < version",
-            name="ck_plan_versions_parent_precedes",
+            "parent_version IS NULL OR parent_version = version - 1",
+            name="ck_plan_versions_parent_is_predecessor",
         ),
         sa.ForeignKeyConstraint(["plan_id"], ["plans.plan_id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["plan_id", "parent_version"],
+            ["plan_versions.plan_id", "plan_versions.version"],
+            name="fk_plan_versions_parent",
+        ),
         sa.ForeignKeyConstraint(["owner_id"], ["users.user_id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("plan_id", "version"),
     )
