@@ -31,6 +31,12 @@ flowchart LR
 - Adapters: persistence, model providers, retrieval, calendar, and notifications.
 - Delivery: HTTP contracts, streaming, worker entry points, and client views.
 
+Some invariants are repeated below the domain, in the schema, where they are
+structural and cheap to state: a row cannot reference another user's plan
+version, and an operation cannot pass confirmation without a recorded approval.
+The list is deliberately short; [ADR 0006](decisions/0006-invariants-below-the-domain.md)
+records what qualifies and why the rest stays in the domain.
+
 Use explicit interfaces at external boundaries. Do not abstract every function or introduce speculative providers. Keep orchestration readable and bounded by deadlines, tool-call limits, and token/cost budgets.
 
 ## Data model
