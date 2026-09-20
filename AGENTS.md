@@ -48,6 +48,8 @@ Chat history is context, not a substitute for repository state. Resolve discrepa
 
 ## Tests and verification
 
+- MUST use local verification. The maintainer has opted out of hosted CI to conserve quota. Do not add, enable, or trigger GitHub Actions or another hosted CI service unless the maintainer explicitly requests a policy change. Hosted CI is not a Definition of Done requirement.
+
 - MUST test meaningful changed behavior and relevant failure paths: invalid input, ownership, conflicts, stale approval, duplicate delivery, cancellation, and recovery as applicable.
 - MUST keep default tests deterministic and offline, with synthetic fixtures. Live/provider-paid tests require explicit opt-in and appropriate authorization.
 - MUST run applicable format, lint, type, test, and build checks using documented commands once available. Documentation-only changes require link and whitespace review, not fabricated application tests.

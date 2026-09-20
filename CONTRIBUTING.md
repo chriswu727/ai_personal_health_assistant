@@ -20,6 +20,8 @@ Use English for code, identifiers, comments, documentation, commits, and pull re
 
 ## Quality gates
 
+Run quality gates locally. Hosted CI is not required, and the maintainer has opted out to conserve quota. Do not add or trigger hosted workflows unless explicitly requested. Provide reproducible local commands and record the tested commit, environment, and results in delivery evidence.
+
 Introduce automated formatting, linting, strict type checks, relevant tests, and builds with the first executable slice. Python tooling should use Ruff and a selected strict type checker; TypeScript tooling should use ESLint and the TypeScript compiler. Record exact commands and versions once configured. No application quality checks are configured at the documentation-only milestone.
 
 Tests should verify behavior: domain invariants, ownership, concurrency, provider contracts, and failure recovery. Use unit tests for deterministic rules, integration tests for persistence, contract tests for adapters, and a small number of end-to-end user journeys. Do not optimize for a coverage badge or tests that merely mirror implementation.

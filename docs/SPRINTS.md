@@ -24,7 +24,7 @@ Each sprint has a goal, bounded tasks, acceptance criteria, and a review. Sprint
 
 Keep at most one sprint In Progress. Update task status alongside implementation. Done requires work on main, passing applicable checks, updated documentation, and traceable evidence. Code being written or a passing mock alone does not establish end-to-end completion.
 
-Link the implementation commit or merged PR and relevant CI results or committed reports. For the closing change itself, refer to its enclosing commit rather than inventing a future hash. Distinguish offline, simulated-provider, and live integration results. Record checks not run.
+Link the implementation commit or merged PR and local verification reports recording commands, environment, and results. Hosted CI is not required and must not be added or triggered without an explicit maintainer request. For the closing change itself, refer to its enclosing commit rather than inventing a future hash. Distinguish offline, simulated-provider, and live integration results. Record checks not run.
 
 A sprint closes only when its committed acceptance criteria are met. Record the reason and destination of any deferred work before closure. Never silently remove required phase-one functionality to make a sprint appear complete.
 
@@ -33,7 +33,7 @@ A sprint closes only when its committed acceptance criteria are met. Record the 
 | Sprint | Goal | Status | Depends on | Exit evidence |
 | --- | --- | --- | --- | --- |
 | 0 | Establish the public project foundation | Done | None | Published documents and repository checks |
-| 1 | Model plans, approvals, and operation lifecycles | Planned | 0 | Typed domain package, CI, and behavior tests |
+| 1 | Model plans, approvals, and operation lifecycles | Planned | 0 | Typed domain package, local quality gates, and behavior tests |
 | 2 | Persist and isolate user workflows | Planned | 1 | API/database integration and recovery tests |
 | 3 | Add grounded reasoning and personal memory | Planned | 2 | Retrieval, memory, and orchestration evaluations |
 | 4 | Deliver the conversational web experience | Planned | 3 | Accessible journeys and cancellation/reconnect checks |
@@ -60,7 +60,7 @@ Status: Planned.
 
 Goal: implement deterministic plan and approval behavior that future model and calendar adapters must obey.
 
-Scope: backend domain package, development tooling, offline tests, and CI. Excludes UI, live model calls, calendar credentials, and deployment infrastructure.
+Scope: backend domain package, development tooling, offline tests, and reproducible local quality gates. Excludes hosted CI, UI, live model calls, calendar credentials, and deployment infrastructure.
 
 | Task | Deliverable | Acceptance criteria | Status | Evidence |
 | --- | --- | --- | --- | --- |
@@ -69,7 +69,7 @@ Scope: backend domain package, development tooling, offline tests, and CI. Exclu
 | S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | Planned | Pending |
 | S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | Planned | Pending |
 | S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | Planned | Pending |
-| S1-06 | Automated quality gates | CI runs formatting, linting, strict type checking, tests, and package build with locked dependencies; commands also pass locally | Planned | Pending |
+| S1-06 | Local quality gates | A documented local command runs formatting checks, linting, strict type checking, tests, and package build with locked dependencies; record commands, environment, and results; no hosted workflow | Planned | Pending |
 | S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | Planned | Pending |
 
 Definition of Done: S1-01 through S1-07 pass acceptance, changes are on main, and the review records evidence. The domain package runs without a model provider, network, database, or personal data. Domain tests do not establish persistent recovery or live calendar reliability.
