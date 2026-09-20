@@ -6,7 +6,9 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
 
 - Completed: Sprint 0, the repository and design foundation. Sprint 1, the tested
   domain slice, merged in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1).
-- Active sprint: Sprint 2, persistence and ownership enforcement.
+- Active sprint: Sprint 2, persistence and ownership enforcement. Part one, plan
+  storage with ownership and ancestry, is merged as `5deeaa2`. Part two, constraint,
+  approval, and operation storage with worker leases, is underway.
 - Application release: none. There is no runnable application or service.
 
 ## Working method
@@ -184,11 +186,11 @@ delivery, model providers, calendar credentials, and deployment infrastructure.
 
 | Task | Deliverable | Acceptance criteria | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| S2-01 | Persistence stack and test harness | Record the database, driver, and migration tool with alternatives; add a schema and a reversible initial migration; integration tests require an explicit database URL and are skipped without one; the default suite stays offline; CI runs both against a standard-runner service container | In Progress | [ADR 0004](decisions/0004-persistence-stack.md); `adapters/persistence/schema.py`, `migrations/versions/0001_initial_schema.py`, `tests/integration/` |
-| S2-02 | Plan persistence with version checks | Store plan versions and items losslessly, including time zones, attribute tokens, and completion status; a concurrent insert of the same version is rejected as a stale revision rather than merged | In Progress | `adapters/persistence/plans.py`, `mapping.py`; `tests/integration/test_plan_repository.py` |
-| S2-03 | Ownership enforcement | Every repository read and write is scoped by owner; a cross-user identifier returns nothing rather than another user's row; no access path omits the owner | In Progress | Owner column on every user-owned table; `test_another_user_reads_nothing`, `test_writing_into_another_users_plan_is_refused` |
-| S2-04 | Constraint and approval persistence | Round-trip constraints, approvals, approved actions, and their targets; a stored approval authorizes exactly what the in-memory one did | Planned | Pending |
-| S2-05 | Durable operations and worker leases | Persist the operation lifecycle; claim work with a lease so two workers cannot hold one operation; an expired lease returns work for reconciliation rather than marking it failed | Planned | Pending |
+| S2-01 | Persistence stack and test harness | Record the database, driver, and migration tool with alternatives; add a schema and a reversible initial migration; integration tests require an explicit database URL and are skipped without one; the default suite stays offline; CI runs both against a standard-runner service container | Done | [ADR 0004](decisions/0004-persistence-stack.md); `adapters/persistence/schema.py`, `migrations/versions/0001_initial_schema.py`, `tests/integration/` |
+| S2-02 | Plan persistence with version checks | Store plan versions and items losslessly, including time zones, attribute tokens, and completion status; a concurrent insert of the same version is rejected as a stale revision rather than merged | Done | `adapters/persistence/plans.py`, `mapping.py`; `tests/integration/test_plan_repository.py` |
+| S2-03 | Ownership enforcement | Every repository read and write is scoped by owner; a cross-user identifier returns nothing rather than another user's row; no access path omits the owner | Done | Owner column on every user-owned table; `test_another_user_reads_nothing`, `test_writing_into_another_users_plan_is_refused` |
+| S2-04 | Constraint and approval persistence | Round-trip constraints, approvals, approved actions, and their targets; a stored approval authorizes exactly what the in-memory one did | In Progress | `adapters/persistence/constraints.py`, `approvals.py`; database round-trip tests |
+| S2-05 | Durable operations and worker leases | Persist the operation lifecycle; claim work with a lease so two workers cannot hold one operation; an expired lease returns work for reconciliation rather than marking it failed | In Progress | `adapters/persistence/operations.py`, `application/worker.py`; lease and claim tests |
 | S2-06 | Restart and transaction boundaries | A failure mid-transaction leaves no partial plan version or half-queued operation; work in flight when a worker dies is recoverable after restart | Planned | Pending |
 | S2-07 | Adversarial path probes | Alongside per-unit tests, probes attempt to reach a protected state by an unintended path: cross-user access, a revision that skips the version check, and a claim that bypasses authorization. Carried from the Sprint 1 retrospective | Planned | Pending |
 | S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | Planned | Pending |
@@ -233,6 +235,10 @@ places described the earlier row-count conflict detection. All are corrected.
 
 ### Verification, part one
 
+Merged in [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2) as `5deeaa2` after two review rounds. S2-01,
+S2-02, and S2-03 are Done.
+
+
 | Check | Where | Result |
 | --- | --- | --- |
 | Format, lint, mypy strict | Local and CI | Pass, 35 source files, checked for both the native platform and `win32` |
@@ -253,6 +259,48 @@ already-applied migration. Each supports the decision in
 
 Not run: any live provider call, any overlapping-transaction test, worker leases,
 and restart recovery. Those are S2-05 and S2-06.
+
+### Review round 1, part two
+
+Three P1 findings, all reproduced against PostgreSQL before any change and all
+blocked after it. Each was a write or a read that trusted a snapshot which had
+already moved on:
+
+| Finding | Reproduced behavior | Resolution |
+| --- | --- | --- |
+| The worker authorized against a historical plan | The worker reloaded the version the operation was queued under, so the domain compared that version against itself and a plan revised in the meantime never invalidated the confirmation | The plan is loaded at its newest version, and the plan row is read for update so a revision orders itself against the claim |
+| A stale save undid a revocation | Saving a pre-revocation snapshot after a revocation wrote `NULL` back over the timestamp, restoring consent | Revocation is monotonic in storage, and the worker reads the approval for update |
+| A stale save erased a live lease | Saving a pre-claim snapshot reset state, attempts, and lease, letting a second worker take work the first still held | Insertion and advancement are separate, and an advance applies only if the stored row still matches the snapshot it was built on |
+
+The last one is worth stating plainly: `SKIP LOCKED` orders two simultaneous
+claims and does nothing about a write arriving later with an older view. The
+concurrency test that passed was testing the case that was already safe.
+
+Documentation corrected alongside: the ADR claimed `claim_next` was the only
+access path not scoped to an owner, and `expired_leases` is a second one.
+
+### Verification, part two
+
+Part two covers S2-04 and S2-05 and is awaiting review.
+
+| Check | Where | Result |
+| --- | --- | --- |
+| Format, lint, mypy strict | Local | Pass, 44 source files, native platform and `win32` |
+| Offline tests | Local | Pass, 101 tests |
+| Database tests | Local | Pass, 38 tests against PostgreSQL 17 |
+| Build | Local | Pass, sdist and wheel |
+
+139 tests pass locally with the database configured, 101 with 38 skipped
+without it. CI results are recorded on the pull request.
+
+The concurrency claim is tested rather than asserted: two transactions open at
+once each call `claim_next`, and the second returns nothing, which is what
+`SKIP LOCKED` is for. Lease expiry is tested through the worker use case and
+lands in `outcome_unknown` without consuming another attempt.
+
+Not run: restart recovery across a real process exit, overlapping-transaction
+tests beyond the claim path, and the adversarial probes. Those are S2-06 and
+S2-07.
 
 Review: pending. Blockers: none identified. Carryover: none.
 

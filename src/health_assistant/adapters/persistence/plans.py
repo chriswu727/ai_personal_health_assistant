@@ -72,7 +72,18 @@ class SqlPlanRepository:
             return None
         return await self._load(owner_id=owner_id, plan_id=plan_id, version_row=version_row)
 
-    async def latest(self, *, owner_id: UserId, plan_id: PlanId) -> PlanVersion | None:
+    async def latest(
+        self, *, owner_id: UserId, plan_id: PlanId, for_update: bool = False
+    ) -> PlanVersion | None:
+        """Return the newest version, optionally serializing against a revision.
+
+        A new version is an insert, so locking the version row would not hold
+        anything back. ``for_update`` locks the plan row instead, which
+        ``save`` also takes, making the plan row the point where a revision and
+        a worker's authorization read order themselves.
+        """
+        if for_update:
+            await self._lock_plan(plan_id)
         result = await self._connection.execute(
             select(plan_versions)
             .where(
@@ -111,11 +122,15 @@ class SqlPlanRepository:
             .values(plan_row(version))
             .on_conflict_do_nothing(index_elements=["plan_id"])
         )
-        result = await self._connection.execute(
-            select(plans.c.owner_id).where(plans.c.plan_id == version.plan_id)
-        )
-        if result.scalar_one() != version.owner_id:
+        if await self._lock_plan(version.plan_id) != version.owner_id:
             raise OwnershipError(f"plan {version.plan_id!r} belongs to another user")
+
+    async def _lock_plan(self, plan_id: PlanId) -> str | None:
+        """Hold the plan row, which orders revisions against authorization reads."""
+        result = await self._connection.execute(
+            select(plans.c.owner_id).where(plans.c.plan_id == plan_id).with_for_update()
+        )
+        return result.scalar_one_or_none()
 
     async def _highest_version(self, plan_id: PlanId) -> int:
         result = await self._connection.execute(

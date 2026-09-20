@@ -6,27 +6,28 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
 
 - Canonical repository: `chriswu727/ai_personal_health_assistant`.
 - Sprint 0 foundation: Done. Sprint 1 domain slice: Done, merged as `e00c949`.
-- Sprint 2: In Progress on `sprint-2/persistence-foundation`. Tasks S2-01, S2-02
-  and S2-03 are underway in [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2);
-  S2-04 through S2-08 are Planned.
+- Sprint 2: In Progress. S2-01 through S2-03 are Done, merged as `5deeaa2`.
+  S2-04 and S2-05 are underway on `sprint-2/durable-operations`; S2-06 through
+  S2-08 are Planned.
 - Storage: PostgreSQL through asynchronous SQLAlchemy and psycopg, with Alembic
-  migrations. Users, plans, plan versions, and plan items are persisted;
-  constraints, approvals, and operations are not yet.
+  migrations. Users, plans, plan versions, plan items, constraints, approvals,
+  approved actions, and operations are persisted.
 - Runtime and checks: Python 3.12 pinned, dependencies locked with `uv`, and
   format, lint, strict type, test, and build gates running locally through
   `./scripts/verify.sh` and in GitHub Actions on `ubuntu-latest`.
 
 ## Latest change
 
-Closed Sprint 1 on the board with a review and retrospective, refined Sprint 2
-into tasks S2-01 through S2-08, and implemented part one: the PostgreSQL schema,
-the initial Alembic migration, a plan repository, a minimal user repository, and
-the transactional boundary, all asynchronous. Ownership is a query predicate on
-every read, and a
-plan version's primary key makes a lost update a rejected write rather than a
-silent overwrite. See [ADR 0004](decisions/0004-persistence-stack.md).
+Added constraint, approval, and operation storage, and the worker's claiming use
+cases. Claiming uses `SELECT ... FOR UPDATE SKIP LOCKED`, so a second worker
+passes over a held row rather than waiting behind it; whether a claimed row may
+execute stays the domain's decision. An operation whose confirmation expired or
+was revoked while it waited is cancelled with the reason recorded rather than
+left in the queue, and an expired lease is released to an unknown outcome rather
+than to a failure. See [ADR 0005](decisions/0005-worker-claiming.md).
 
-In [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2), awaiting review.
+Migration 0002 adds the four new tables. It is a new migration rather than an
+amendment to 0001, which is now on main.
 
 ## Verification
 
@@ -34,25 +35,26 @@ Local run on macOS 15.7.4 arm64 with Python 3.12.13, against PostgreSQL 17 in a
 container:
 
 - `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and
-  `uv run mypy --platform win32`: passed, 55 files, 35 source files, strict mode.
-- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 112 passed.
-- `uv run pytest` without it: 101 passed, 11 skipped, which are the database tests.
+  `uv run mypy --platform win32`: passed, 65 files, 44 source files, strict mode.
+- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 139 passed.
+- `uv run pytest` without it: 101 passed, 38 skipped, which are the database tests.
 - `uv build`: passed.
 
-CI runs the same checks, with the database tests against a `postgres:17` service
-container. [Pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/pull/2).
+Covered: claiming under contention through two simultaneous transactions, lease
+expiry through the worker use case, authorization against current records, and
+refusal of writes built on stale reads.
 
-Not run: any live provider call, overlapping-transaction tests, worker leases,
-and restart recovery.
+Not covered: restart recovery across a real process exit, which the lease tests
+simulate by advancing the clock rather than by killing a worker; concurrency
+beyond the claim and stale-write paths; any live provider call; and the
+adversarial path probes. Those are S2-06 and S2-07.
 
 ## Next action
 
-After part one is reviewed and on main, continue Sprint 2 with S2-04 through
-S2-07: persist constraints, approvals and their approved actions including the
-compensation target; persist the operation lifecycle and claim work with a
-lease so two workers cannot hold one operation and an expired lease returns work
-for reconciliation; then the adversarial path probes carried from the Sprint 1
-retrospective.
+Continue Sprint 2 with S2-06 and S2-07: transaction-boundary and restart
+recovery tests, including work in flight when a worker dies, and then the
+adversarial path probes carried from the Sprint 1 retrospective. S2-08 closes the
+sprint with the review and the Sprint 3 breakdown.
 
 ## Blockers and limitations
 

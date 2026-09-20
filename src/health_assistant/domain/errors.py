@@ -152,6 +152,17 @@ class OperationIdentityError(OperationError):
         super().__init__(detail)
 
 
+class OperationConflictError(OperationError):
+    """The stored operation is not the one the caller read.
+
+    Raised when a write is built on a snapshot that another transaction has
+    already advanced past, so applying it would undo committed work.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
 class InvalidTransitionError(OperationError):
     def __init__(self, source: str, target: str) -> None:
         super().__init__(f"transition {source} -> {target} is not permitted")
