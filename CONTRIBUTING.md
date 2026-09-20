@@ -2,6 +2,8 @@
 
 ## Working agreement
 
+AI contributors must follow [AGENTS.md](AGENTS.md), the canonical repository agreement. Tool-specific instruction files only point to that agreement. Every session reads the sprint board and handoff before making changes and updates them as work progresses. Repository instructions express requirements; executable checks enforce only the properties they actually validate.
+
 Use English for code, identifiers, comments, documentation, commits, and pull requests. Deliver small, reviewable changes with a clear user or engineering outcome. Prefer explicit behavior and familiar patterns over cleverness. Standards are concrete project conventions, not a claim to satisfy every coding standard.
 
 ## Code conventions

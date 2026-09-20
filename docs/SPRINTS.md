@@ -9,6 +9,8 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
 - Active sprint: none. Implementation has not started.
 - Application release: none.
 
+Maintainer-requested governance follow-up: [AGENTS.md](../AGENTS.md) defines the mandatory AI workflow and [HANDOFF.md](HANDOFF.md) carries session context. This documentation work does not start or complete any Sprint 1 implementation task.
+
 ## Working method
 
 Each sprint has a goal, bounded tasks, acceptance criteria, and a review. Sprint numbers express sequence rather than a promised time estimate. Refine later outlines before execution.

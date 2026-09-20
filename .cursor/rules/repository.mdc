@@ -1,0 +1,8 @@
+---
+description: Mandatory repository engineering and sprint workflow
+alwaysApply: true
+---
+
+Read and follow AGENTS.md at the repository root before making changes. It is the canonical agreement for required reading, sprint execution, coding standards, verification, privacy, and handoff.
+
+Read docs/SPRINTS.md and docs/HANDOFF.md at the beginning of every session. Keep repository content and public GitHub communication in English. Do not duplicate or override the canonical rules here.

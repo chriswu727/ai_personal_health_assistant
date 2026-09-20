@@ -34,6 +34,8 @@ All capabilities above are **planned**, not implemented.
 | [Roadmap](docs/ROADMAP.md) | Incremental delivery and milestone exit criteria |
 | [Sprint board](docs/SPRINTS.md) | Task status, acceptance criteria, and completion evidence |
 | [Engineering standards](CONTRIBUTING.md) | Coding, review, testing, and documentation conventions |
+| [AI engineering rules](AGENTS.md) | Mandatory workflow for AI contributors and tool entry points |
+| [Development handoff](docs/HANDOFF.md) | Current context and the next concrete action |
 | [Evaluation strategy](docs/EVALUATION.md) | Evidence required before reliability or scale claims |
 | [Security policy](SECURITY.md) | Sensitive data handling and vulnerability reporting |
 
