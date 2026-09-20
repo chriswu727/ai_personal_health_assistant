@@ -30,12 +30,15 @@ class SqlPlanRepository:
 
     def save(self, version: PlanVersion) -> None:
         self._ensure_plan(version)
+        # RETURNING rather than rowcount: an INSERT's reported row count is not
+        # guaranteed to be meaningful, while a DO NOTHING conflict returns no row.
         inserted = self._connection.execute(
             insert(plan_versions)
             .values(plan_version_row(version))
             .on_conflict_do_nothing(index_elements=["plan_id", "version"])
-        )
-        if inserted.rowcount == 0:
+            .returning(plan_versions.c.version)
+        ).scalar_one_or_none()
+        if inserted is None:
             raise StalePlanRevisionError(
                 expected=version.version, actual=self._highest_version(version.plan_id)
             )
