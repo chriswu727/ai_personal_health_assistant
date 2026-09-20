@@ -68,7 +68,7 @@ Scope: backend domain package, development tooling, offline tests, reproducible 
 | S1-02 | Typed plans and revisions | No framework/SDK dependencies in domain code; revisions preserve unrelated constraints and completed history; invalid input and stale edits are rejected | In Progress | `domain/plans.py`, `domain/constraints.py`, `domain/validation.py`; `tests/test_plans.py`, `tests/test_validation.py` |
 | S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | In Progress | `domain/approvals.py`, `domain/actions.py`; `tests/test_approvals.py`. Scope binds an action per item and the fingerprint covers it ([ADR 0003](decisions/0003-authorization-boundary.md)) |
 | S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | In Progress | `domain/operations.py`; `tests/test_operations.py`. Each entry point names its source state, and authorization is revalidated when work is claimed |
-| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | In Progress | 93 offline tests with synthetic fixtures and an injected fixed clock; `tests/test_scenario_first_journey.py` covers the product-scope journey; four review findings have regression tests |
+| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | In Progress | 98 offline tests with synthetic fixtures and an injected fixed clock; `tests/test_scenario_first_journey.py` covers the product-scope journey; four review findings have regression tests |
 | S1-06 | Local and CI quality gates | Documented commands run formatting checks, linting, strict type checking, tests, and package build with locked dependencies; the same checks pass locally and on standard GitHub-hosted `ubuntu-latest`; record results; no paid runners or paid API calls | In Progress | `scripts/verify.sh` and `.github/workflows/ci.yml` run identical commands; both the local run and the [CI run on `ubuntu-latest`](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35530164477) passed, recorded below |
 | S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | In Progress | README implementation section, updated architecture, [ADR 0001](decisions/0001-python-runtime-and-tooling.md) and [ADR 0002](decisions/0002-first-class-constraints.md) |
 
@@ -94,10 +94,27 @@ legitimate path unaffected:
 | A create approval authorized a cancel | `cancel_event` queued under a `create_event` confirmation | Approval scope and fingerprint bind the action per item |
 | Expired approval still executed | Claimed at minute 31 under a 30-minute confirmation | Authorization is revalidated at the execution boundary |
 
-Reasoning and consequences are recorded in
-[ADR 0003](decisions/0003-authorization-boundary.md). The common cause was that
-each function validated only its own local preconditions, and the tests mirrored
-that shape rather than crossing entry points.
+The common cause was that each function validated only its own local
+preconditions, and the tests mirrored that shape rather than crossing entry
+points.
+
+### Review round 2
+
+The reviewer verified three of the four findings as fixed and kept the approval
+binding open: the action kind was bound, but the compensation target was not.
+Reproduced on that commit, then fixed:
+
+| Finding | Reproduced behavior | Resolution |
+| --- | --- | --- |
+| Compensation target substitution | Replacing `compensates` on a confirmed cancellation still reached EXECUTING under the original approval | `ApprovedAction` carries the target; both the approval fingerprint and the operation's idempotency key derive from the same canonical action payload |
+
+An approval to cancel must now name the write it undoes; an untargeted
+cancellation approval no longer authorizes a targeted one. A retry of the
+identical authorized operation still succeeds with an unchanged idempotency key,
+which the review asked to preserve and which is covered by a test.
+
+Reasoning and consequences for both rounds are recorded in
+[ADR 0003](decisions/0003-authorization-boundary.md).
 
 ### Verification
 
@@ -109,7 +126,7 @@ pytest 9.1.1, commit as reviewed on the branch:
 | Format | `uv run ruff format --check .` | Pass, 37 files |
 | Lint | `uv run ruff check .` | Pass |
 | Types | `uv run mypy` | Pass, 20 source files, strict mode |
-| Tests | `uv run pytest` | Pass, 93 tests, offline |
+| Tests | `uv run pytest` | Pass, 98 tests, offline |
 | Build | `uv build` | Pass, sdist and wheel |
 
 The same six checks passed on a standard GitHub-hosted `ubuntu-latest` runner:

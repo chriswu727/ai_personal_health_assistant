@@ -132,6 +132,19 @@ class OperationError(DomainError):
     """Base class for external-operation lifecycle failures."""
 
 
+class ApprovalTargetMismatchError(ApprovalError):
+    """The approval covers this item and action, but for a different target."""
+
+    def __init__(self, item_id: str, kind: str, target: str | None) -> None:
+        described = repr(target) if target is not None else "no target"
+        super().__init__(
+            f"approval does not authorize {kind} on plan item {item_id!r} for {described}"
+        )
+        self.item_id = item_id
+        self.kind = kind
+        self.target = target
+
+
 class OperationIdentityError(OperationError):
     """The operation, the plan, and the approval do not describe one proposal."""
 

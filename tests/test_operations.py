@@ -11,6 +11,7 @@ from health_assistant.domain.errors import (
     ApprovalActionNotAuthorizedError,
     ApprovalExpiredError,
     ApprovalRevokedError,
+    ApprovalTargetMismatchError,
     InvalidTransitionError,
     LeaseHeldError,
     LeaseNotHeldError,
@@ -92,6 +93,7 @@ def _awaiting(
     *,
     kind: OperationKind = OperationKind.CREATE_EVENT,
     operation_id: str = "op-1",
+    compensates: str | None = None,
 ) -> ToolOperation:
     return request_confirmation(
         propose(
@@ -100,6 +102,7 @@ def _awaiting(
             item_id=ITEM,
             kind=kind,
             now=at(),
+            compensates=OperationId(compensates) if compensates is not None else None,
         ),
         now=at(minutes=1),
     )
@@ -489,6 +492,116 @@ def test_a_compensating_operation_references_the_write_it_undoes() -> None:
         now=at(minutes=5),
         compensates=OperationId("op-1"),
     )
+    other_target = propose(
+        operation_id=OperationId("op-2"),
+        plan=plan,
+        item_id=ITEM,
+        kind=OperationKind.CANCEL_EVENT,
+        now=at(minutes=5),
+        compensates=OperationId("op-other"),
+    )
 
     assert compensating.compensates == "op-1"
     assert compensating.state is OperationState.PROPOSED
+    assert compensating.idempotency_key != other_target.idempotency_key
+
+
+def _cancel_queued(*, target: str = "write-a") -> Queued:
+    """A confirmed cancellation whose approval names the write it undoes."""
+    plan = _plan()
+    approval = _approval(
+        plan,
+        approval_id="approval-cancel",
+        scope=make_scope("item-a", kind=OperationKind.CANCEL_EVENT, compensates=target),
+    )
+    operation = confirm(
+        _awaiting(
+            plan,
+            kind=OperationKind.CANCEL_EVENT,
+            operation_id="op-cancel",
+            compensates=target,
+        ),
+        approval=approval,
+        plan=plan,
+        actor_id=OWNER,
+        now=at(minutes=2),
+    )
+    return Queued(plan=plan, approval=approval, operation=operation)
+
+
+def test_execution_is_refused_when_the_compensation_target_is_substituted() -> None:
+    """Regression: approving one undo is not approving a different one."""
+    queued = _cancel_queued(target="write-a")
+    substituted = replace(queued.operation, compensates=OperationId("write-b"))
+
+    with pytest.raises(OperationIdentityError):
+        claim(
+            substituted,
+            approval=queued.approval,
+            plan=queued.plan,
+            worker_id="worker-1",
+            now=at(minutes=3),
+            lease_duration=LEASE,
+        )
+
+
+def test_a_cancellation_approval_must_name_the_write_it_undoes() -> None:
+    plan = _plan()
+    untargeted = _approval(
+        plan,
+        approval_id="approval-cancel",
+        scope=make_scope("item-a", kind=OperationKind.CANCEL_EVENT),
+    )
+
+    with pytest.raises(ApprovalTargetMismatchError):
+        confirm(
+            _awaiting(
+                plan,
+                kind=OperationKind.CANCEL_EVENT,
+                operation_id="op-cancel",
+                compensates="write-a",
+            ),
+            approval=untargeted,
+            plan=plan,
+            actor_id=OWNER,
+            now=at(minutes=2),
+        )
+
+
+def test_an_approval_for_one_target_cannot_confirm_another() -> None:
+    plan = _plan()
+    approval = _approval(
+        plan,
+        approval_id="approval-cancel",
+        scope=make_scope("item-a", kind=OperationKind.CANCEL_EVENT, compensates="write-a"),
+    )
+    other = request_confirmation(
+        propose(
+            operation_id=OperationId("op-cancel-b"),
+            plan=plan,
+            item_id=ITEM,
+            kind=OperationKind.CANCEL_EVENT,
+            now=at(),
+            compensates=OperationId("write-b"),
+        ),
+        now=at(minutes=1),
+    )
+
+    with pytest.raises(ApprovalTargetMismatchError):
+        confirm(other, approval=approval, plan=plan, actor_id=OWNER, now=at(minutes=2))
+
+
+def test_a_targeted_cancellation_executes_when_its_target_is_approved() -> None:
+    queued = _cancel_queued(target="write-a")
+
+    executing = claim(
+        queued.operation,
+        approval=queued.approval,
+        plan=queued.plan,
+        worker_id="worker-1",
+        now=at(minutes=3),
+        lease_duration=LEASE,
+    )
+
+    assert executing.state is OperationState.EXECUTING
+    assert executing.compensates == "write-a"

@@ -13,7 +13,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-from health_assistant.domain.actions import ApprovedAction
+from health_assistant.domain.actions import ApprovedAction, action_sort_key
 from health_assistant.domain.constraints import ConstraintSet
 from health_assistant.domain.errors import (
     ApprovalActionNotAuthorizedError,
@@ -21,6 +21,7 @@ from health_assistant.domain.errors import (
     ApprovalPayloadChangedError,
     ApprovalRevokedError,
     ApprovalScopeError,
+    ApprovalTargetMismatchError,
     ApprovalVersionMismatchError,
     OwnershipError,
     PlanNotApprovableError,
@@ -65,18 +66,32 @@ def fingerprint_items(items: Iterable[PlanItem]) -> str:
     return _digest([_item_payload(item) for item in sorted(items, key=lambda item: item.item_id)])
 
 
-def fingerprint_scope(plan: PlanVersion, scope: Iterable[ApprovedAction]) -> str:
-    """Return a digest over both the approved content and the approved actions.
+def _action_payload(plan: PlanVersion, action: ApprovedAction) -> dict[str, object]:
+    return {
+        "kind": str(action.kind),
+        "compensates": action.compensates,
+        "item": _item_payload(plan.item(action.item_id)),
+    }
 
-    Including the action means a confirmation for one kind of external write
-    cannot be replayed to authorize a different one against the same item.
+
+def fingerprint_action(plan: PlanVersion, action: ApprovedAction) -> str:
+    """Return a digest of one approved action, its target, and its item content.
+
+    This is the canonical description of a single external write. An operation
+    derives its idempotency key from it, and an approval's fingerprint is built
+    from the same payloads, so both detect the same substitutions.
     """
-    return _digest(
-        [
-            {"kind": str(action.kind), "item": _item_payload(plan.item(action.item_id))}
-            for action in sorted(scope)
-        ]
-    )
+    return _digest(_action_payload(plan, action))
+
+
+def fingerprint_scope(plan: PlanVersion, scope: Iterable[ApprovedAction]) -> str:
+    """Return a digest over the approved content, actions, and action targets.
+
+    Including the action and its target means a confirmation for one external
+    write cannot be replayed to authorize a different kind of write, or the same
+    kind of write against a different target.
+    """
+    return _digest([_action_payload(plan, action) for action in sorted(scope, key=action_sort_key)])
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,11 +217,18 @@ def authorize_execution(
     if not actions:
         raise ApprovalScopeError("at least one action must be requested")
 
-    for action in sorted(actions):
-        if action not in approval.scope:
-            if action.item_id in approval.item_ids:
-                raise ApprovalActionNotAuthorizedError(action.item_id, str(action.kind))
+    for action in sorted(actions, key=action_sort_key):
+        if action in approval.scope:
+            continue
+        if action.item_id not in approval.item_ids:
             raise ApprovalScopeError(f"item outside the approved scope: {action.item_id!r}")
+        same_kind = any(
+            approved.item_id == action.item_id and approved.kind == action.kind
+            for approved in approval.scope
+        )
+        if same_kind:
+            raise ApprovalTargetMismatchError(action.item_id, str(action.kind), action.compensates)
+        raise ApprovalActionNotAuthorizedError(action.item_id, str(action.kind))
 
     if fingerprint_scope(plan, approval.scope) != approval.payload_fingerprint:
         raise ApprovalPayloadChangedError()

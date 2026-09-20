@@ -17,6 +17,7 @@ from health_assistant.domain.constraints import (
 )
 from health_assistant.domain.identifiers import (
     ConstraintId,
+    OperationId,
     PlanId,
     PlanItemId,
     UserId,
@@ -119,12 +120,22 @@ def make_constraint_set(*constraints: Constraint, owner: UserId = OWNER) -> Cons
 EMPTY_CONSTRAINTS = make_constraint_set()
 
 
-def make_action(item_id: str, kind: OperationKind = OperationKind.CREATE_EVENT) -> ApprovedAction:
-    return ApprovedAction(item_id=PlanItemId(item_id), kind=kind)
+def make_action(
+    item_id: str,
+    kind: OperationKind = OperationKind.CREATE_EVENT,
+    compensates: str | None = None,
+) -> ApprovedAction:
+    return ApprovedAction(
+        item_id=PlanItemId(item_id),
+        kind=kind,
+        compensates=OperationId(compensates) if compensates is not None else None,
+    )
 
 
 def make_scope(
-    *item_ids: str, kind: OperationKind = OperationKind.CREATE_EVENT
+    *item_ids: str,
+    kind: OperationKind = OperationKind.CREATE_EVENT,
+    compensates: str | None = None,
 ) -> frozenset[ApprovedAction]:
     """Return an approval scope covering one external action per named item."""
-    return frozenset(make_action(item_id, kind) for item_id in item_ids)
+    return frozenset(make_action(item_id, kind, compensates) for item_id in item_ids)

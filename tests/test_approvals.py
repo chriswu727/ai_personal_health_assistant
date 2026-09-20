@@ -264,3 +264,16 @@ def test_the_fingerprint_distinguishes_the_approved_action() -> None:
     cancel = fingerprint_scope(plan, make_scope("item-a", kind=OperationKind.CANCEL_EVENT))
 
     assert create != cancel
+
+
+def test_the_fingerprint_distinguishes_the_compensation_target() -> None:
+    plan = make_plan(make_item("item-a"))
+    undo_first = fingerprint_scope(
+        plan, make_scope("item-a", kind=OperationKind.CANCEL_EVENT, compensates="write-a")
+    )
+    undo_second = fingerprint_scope(
+        plan, make_scope("item-a", kind=OperationKind.CANCEL_EVENT, compensates="write-b")
+    )
+    untargeted = fingerprint_scope(plan, make_scope("item-a", kind=OperationKind.CANCEL_EVENT))
+
+    assert len({undo_first, undo_second, untargeted}) == 3

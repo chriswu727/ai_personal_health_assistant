@@ -20,7 +20,7 @@ from enum import StrEnum
 from types import MappingProxyType
 
 from health_assistant.domain.actions import ApprovedAction, OperationKind
-from health_assistant.domain.approvals import Approval, authorize_execution, fingerprint_items
+from health_assistant.domain.approvals import Approval, authorize_execution, fingerprint_action
 from health_assistant.domain.errors import (
     InvalidTransitionError,
     LeaseHeldError,
@@ -148,6 +148,10 @@ class ToolOperation:
         object.__setattr__(self, "owner_id", require_identifier(self.owner_id, "owner_id"))
         object.__setattr__(self, "plan_id", require_identifier(self.plan_id, "plan_id"))
         object.__setattr__(self, "item_id", require_identifier(self.item_id, "item_id"))
+        if self.compensates is not None:
+            object.__setattr__(
+                self, "compensates", require_identifier(self.compensates, "compensates")
+            )
         object.__setattr__(
             self, "idempotency_key", require_identifier(self.idempotency_key, "idempotency_key")
         )
@@ -167,6 +171,15 @@ def _ensure_transition(operation: ToolOperation, target: OperationState) -> None
     """Raise unless the state machine permits moving to ``target``."""
     if target not in ALLOWED_TRANSITIONS[operation.state]:
         raise InvalidTransitionError(str(operation.state), str(target))
+
+
+def approved_action_for(operation: ToolOperation) -> ApprovedAction:
+    """Return the action an approval must cover for this operation to execute."""
+    return ApprovedAction(
+        item_id=operation.item_id,
+        kind=operation.kind,
+        compensates=operation.compensates,
+    )
 
 
 def _require_state(
@@ -202,17 +215,18 @@ def authorize_operation(
             f"{plan.version}, and the approval covers {approval.plan_version}"
         )
 
-    item = plan.item(operation.item_id)
-    expected_key = derive_idempotency_key(operation.operation_id, fingerprint_items([item]))
+    action = approved_action_for(operation)
+    expected_key = derive_idempotency_key(operation.operation_id, fingerprint_action(plan, action))
     if expected_key != operation.idempotency_key:
         raise OperationIdentityError(
-            "plan item content differs from the proposal this operation was derived from"
+            "item content, action, or compensation target differs from the proposal "
+            "this operation was derived from"
         )
 
     authorize_execution(
         approval,
         plan=plan,
-        actions=frozenset({ApprovedAction(item_id=operation.item_id, kind=operation.kind)}),
+        actions=frozenset({action}),
         actor_id=operation.owner_id,
         now=now,
     )
@@ -232,6 +246,7 @@ def propose(
     item = plan.item(item_id)
     if item.is_reported:
         raise ValidationError("an item with a reported outcome cannot be executed externally")
+    action = ApprovedAction(item_id=item_id, kind=kind, compensates=compensates)
     instant = require_utc(now, "now")
     return ToolOperation(
         operation_id=operation_id,
@@ -240,7 +255,7 @@ def propose(
         plan_version=plan.version,
         item_id=item_id,
         kind=kind,
-        idempotency_key=derive_idempotency_key(operation_id, fingerprint_items([item])),
+        idempotency_key=derive_idempotency_key(operation_id, fingerprint_action(plan, action)),
         created_at=instant,
         updated_at=instant,
         state=OperationState.PROPOSED,

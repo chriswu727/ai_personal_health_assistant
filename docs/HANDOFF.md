@@ -19,7 +19,9 @@ Implemented the first tested domain slice, then addressed four P1 authorization
 findings from the review of pull request #1: a retry path that reached the queue
 without confirmation, confirmation that did not compare operation and plan
 identity, approvals that named an item but not the action, and execution that
-was never reauthorized after queuing. See
+was never reauthorized after queuing. A second review round kept the approval
+binding open because the compensation target was still unbound; an approved
+action now carries the write it undoes. See
 [ADR 0003](decisions/0003-authorization-boundary.md).
 
 The domain package imports the standard library only. There is still no
@@ -34,11 +36,11 @@ and pytest 9.1.1:
 - `uv run ruff format --check .`: passed, 37 files.
 - `uv run ruff check .`: passed.
 - `uv run mypy`: passed, 20 source files, strict mode.
-- `uv run pytest`: passed, 93 tests, offline with synthetic fixtures.
+- `uv run pytest`: passed, 98 tests, offline with synthetic fixtures.
 - `uv build`: passed, source distribution and wheel.
 
-All four reported findings were reproduced against the reviewed commit before
-any change and re-checked afterwards: each is now refused by a named domain
+All five reported findings across two review rounds were reproduced against the
+reviewed commit before any change and re-checked afterwards: each is now refused by a named domain
 error, while a legitimate claim still succeeds.
 
 Not run: any live provider call, and any persistence, concurrency, or recovery
