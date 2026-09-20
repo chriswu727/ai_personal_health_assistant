@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from health_assistant.adapters.persistence import (
     create_database_engine,
-    database_event_loop_policy,
+    new_database_event_loop,
 )
 
 URL_VARIABLE = "HEALTH_ASSISTANT_TEST_DATABASE_URL"
@@ -55,7 +55,7 @@ def pytest_asyncio_loop_factories() -> dict[str, Callable[[], asyncio.AbstractEv
     The Windows default is a ProactorEventLoop, which psycopg's async mode
     refuses before it ever reaches the server.
     """
-    return {"database": database_event_loop_policy().new_event_loop}
+    return {"database": new_database_event_loop}
 
 
 @pytest.fixture(scope="session")

@@ -3,14 +3,14 @@
 import asyncio
 
 from health_assistant.adapters.persistence.event_loops import (
-    database_event_loop_policy,
+    new_database_event_loop,
     run,
 )
 
 
 def test_the_database_loop_is_never_a_proactor_loop() -> None:
     """psycopg refuses the Windows default loop, so this must hold on Windows."""
-    loop = database_event_loop_policy().new_event_loop()
+    loop = new_database_event_loop()
     try:
         assert "Proactor" not in type(loop).__name__
     finally:

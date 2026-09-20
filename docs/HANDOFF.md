@@ -33,10 +33,10 @@ In [pull request #2](https://github.com/chriswu727/ai_personal_health_assistant/
 Local run on macOS 15.7.4 arm64 with Python 3.12.13, against PostgreSQL 17 in a
 container:
 
-- `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`: passed,
-  53 files, 33 source files, strict mode.
-- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 106 passed.
-- `uv run pytest` without it: 98 passed, 8 skipped, which are the database tests.
+- `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and
+  `uv run mypy --platform win32`: passed, 55 files, 35 source files, strict mode.
+- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 112 passed.
+- `uv run pytest` without it: 101 passed, 11 skipped, which are the database tests.
 - `uv build`: passed.
 
 CI runs the same checks, with the database tests against a `postgres:17` service

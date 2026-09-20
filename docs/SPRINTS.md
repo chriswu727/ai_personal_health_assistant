@@ -213,6 +213,20 @@ The domain invariant was tightened alongside the schema: a version's parent must
 be the version immediately before it, so the rule is one rule rather than two
 that could drift.
 
+### Review round 2, part one
+
+The reviewer verified the ancestry and Windows runtime fixes, the latter on
+native Windows, and reported that the Windows fix had introduced a quality-gate
+regression of its own.
+
+| Finding | Reproduced behavior | Resolution |
+| --- | --- | --- |
+| The platform branch broke type checking on Windows | `sys.platform == "win32"` is statically known, so the return after it was unreachable and `warn_unreachable` failed the gate on Windows while Linux stayed green | The branch is gone: `asyncio.SelectorEventLoop` exists on every platform and is already the POSIX default, so one factory serves both |
+
+`uv run mypy --platform win32` is now part of the gate, locally and in CI. It
+reproduces a Windows-only typing regression from Linux or macOS, which is how
+this one was confirmed and then confirmed fixed, and it needs no extra runner.
+
 Documentation was out of step with the code: the README and architecture still
 said persistence did not exist, the handoff disagreed with the board, and two
 places described the earlier row-count conflict detection. All are corrected.
@@ -221,7 +235,7 @@ places described the earlier row-count conflict detection. All are corrected.
 
 | Check | Where | Result |
 | --- | --- | --- |
-| Format, lint, mypy strict | Local and CI | Pass, 35 source files |
+| Format, lint, mypy strict | Local and CI | Pass, 35 source files, checked for both the native platform and `win32` |
 | Offline tests | Local and CI | Pass, 101 tests |
 | Database tests | Local and CI | Pass, 11 tests against PostgreSQL 17 |
 | Build | Local and CI | Pass, sdist and wheel |
