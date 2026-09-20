@@ -69,7 +69,7 @@ Scope: backend domain package, development tooling, offline tests, reproducible 
 | S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | In Progress | `domain/approvals.py`; `tests/test_approvals.py` |
 | S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | In Progress | `domain/operations.py`; `tests/test_operations.py` |
 | S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | In Progress | 79 offline tests with synthetic fixtures and an injected fixed clock; `tests/test_scenario_first_journey.py` covers the product-scope journey |
-| S1-06 | Local and CI quality gates | Documented commands run formatting checks, linting, strict type checking, tests, and package build with locked dependencies; the same checks pass locally and on standard GitHub-hosted `ubuntu-latest`; record results; no paid runners or paid API calls | In Progress | `scripts/verify.sh` and `.github/workflows/ci.yml` run identical commands; local run recorded below; the first CI run is pending |
+| S1-06 | Local and CI quality gates | Documented commands run formatting checks, linting, strict type checking, tests, and package build with locked dependencies; the same checks pass locally and on standard GitHub-hosted `ubuntu-latest`; record results; no paid runners or paid API calls | In Progress | `scripts/verify.sh` and `.github/workflows/ci.yml` run identical commands; both the local run and the [CI run on `ubuntu-latest`](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35530164477) passed, recorded below |
 | S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | In Progress | README implementation section, updated architecture, [ADR 0001](decisions/0001-python-runtime-and-tooling.md) and [ADR 0002](decisions/0002-first-class-constraints.md) |
 
 Definition of Done: S1-01 through S1-07 pass acceptance, changes are on main, and the review records evidence. The domain package runs without a model provider, network, database, or personal data. Domain tests do not establish persistent recovery or live calendar reliability.
@@ -91,10 +91,15 @@ pytest 9.1.1, commit as reviewed on the branch:
 | Tests | `uv run pytest` | Pass, 79 tests, offline |
 | Build | `uv build` | Pass, sdist and wheel |
 
-Not run: hosted CI (the workflow is added in this change and has never executed),
-any live provider call, any persistence or concurrency test against a real
-database. These domain tests establish deterministic contracts only. They do not
-establish persistent recovery, live calendar reliability, or clinical validity.
+The same six checks passed on a standard GitHub-hosted `ubuntu-latest` runner:
+[CI run](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35530164477), reporting 35 files formatted, lint clean, 19 source files
+type-checked, 79 tests passed, and both distributions built. Later commits on the
+branch run the workflow again; results are visible on the pull request.
+
+Not run: any live provider call, and any persistence, concurrency, or recovery
+test against a real database. These domain tests establish deterministic
+contracts only. They do not establish persistent recovery, live calendar
+reliability, or clinical validity.
 
 Review: pending. Blockers: none identified. Carryover: none.
 

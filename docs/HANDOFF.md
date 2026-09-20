@@ -37,11 +37,13 @@ and pytest 9.1.1:
 - `uv run pytest`: passed, 79 tests, offline with synthetic fixtures.
 - `uv build`: passed, source distribution and wheel.
 
-Not run: hosted CI, which is introduced by this change and has never executed;
-any live provider call; any persistence, concurrency, or recovery test against a
-real database. These results describe deterministic domain contracts. They do
-not establish persistent recovery, live calendar reliability, or clinical
-validity.
+The same checks passed on a standard GitHub-hosted `ubuntu-latest` runner:
+[CI run](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/35530164477).
+
+Not run: any live provider call, and any persistence, concurrency, or recovery
+test against a real database. These results describe deterministic domain
+contracts. They do not establish persistent recovery, live calendar reliability,
+or clinical validity.
 
 ## Next action
 
