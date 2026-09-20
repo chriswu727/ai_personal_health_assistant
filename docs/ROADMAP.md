@@ -2,6 +2,8 @@
 
 Milestones advance on evidence, not calendar dates. All application milestones are currently pending.
 
+The [Sprint board](SPRINTS.md) is the single source of truth for task and sprint status. Sprint 0 covers M0; Sprints 1 and 2 cover M1 and M2; Sprints 3-4 cover M3; Sprints 5, 6, and 7 cover M4, M5, and M6. Refine each sprint before starting it and close it with acceptance evidence.
+
 | Milestone | Deliverable | Exit criteria |
 | --- | --- | --- |
 | M0: Foundation | Scope, architecture, standards, evaluation plan | English documentation is internally consistent and clearly distinguishes plans from implementation. |

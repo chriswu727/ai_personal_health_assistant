@@ -32,6 +32,7 @@ All capabilities above are **planned**, not implemented.
 | [Product scope](docs/PRODUCT_SCOPE.md) | Phase-one requirements, exclusions, and long-term vision |
 | [Architecture](docs/ARCHITECTURE.md) | Proposed boundaries, data model, and failure semantics |
 | [Roadmap](docs/ROADMAP.md) | Incremental delivery and milestone exit criteria |
+| [Sprint board](docs/SPRINTS.md) | Task status, acceptance criteria, and completion evidence |
 | [Engineering standards](CONTRIBUTING.md) | Coding, review, testing, and documentation conventions |
 | [Evaluation strategy](docs/EVALUATION.md) | Evidence required before reliability or scale claims |
 | [Security policy](SECURITY.md) | Sensitive data handling and vulnerability reporting |

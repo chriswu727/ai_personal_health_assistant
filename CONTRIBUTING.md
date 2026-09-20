@@ -24,6 +24,8 @@ Tests should verify behavior: domain invariants, ownership, concurrency, provide
 
 ## Change review
 
+Track delivery in [the Sprint board](docs/SPRINTS.md). Reference task IDs in implementation pull requests, update status alongside the work, and record acceptance evidence before marking Done. Close each sprint with a review. Later work stays Planned until the active sprint closes or is explicitly replanned.
+
 A pull request explains the problem, resulting behavior, relevant design tradeoffs, validation, and remaining limitations. Changes to public contracts, migrations, permissions, and health boundaries require explicit review notes. Update documentation alongside behavior changes. Never report a planned check as passed.
 
 Use concise imperative English commit messages, optionally prefixed with feat, fix, docs, test, refactor, or chore. Keep unrelated cleanup separate. Record consequential architectural choices in docs/decisions with context, alternatives, decision, and consequences.

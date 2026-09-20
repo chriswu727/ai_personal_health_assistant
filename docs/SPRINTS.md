@@ -1,0 +1,114 @@
+# Sprint Board
+
+This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) defines milestone order; [product scope](PRODUCT_SCOPE.md) defines intended behavior.
+
+## Current position
+
+- Completed: Sprint 0, the repository and design foundation.
+- Next: Sprint 1, the first tested domain slice.
+- Active sprint: none. Implementation has not started.
+- Application release: none.
+
+## Working method
+
+Each sprint has a goal, bounded tasks, acceptance criteria, and a review. Sprint numbers express sequence rather than a promised time estimate. Refine later outlines before execution.
+
+| Status | Meaning |
+| --- | --- |
+| Planned | Defined work that has not started |
+| In Progress | Implementation or verification is underway |
+| Blocked | Cannot advance; record the dependency and required unblock action |
+| Done | Acceptance criteria passed and completion evidence is recorded |
+
+Keep at most one sprint In Progress. Update task status alongside implementation. Done requires work on main, passing applicable checks, updated documentation, and traceable evidence. Code being written or a passing mock alone does not establish end-to-end completion.
+
+Link the implementation commit or merged PR and relevant CI results or committed reports. For the closing change itself, refer to its enclosing commit rather than inventing a future hash. Distinguish offline, simulated-provider, and live integration results. Record checks not run.
+
+A sprint closes only when its committed acceptance criteria are met. Record the reason and destination of any deferred work before closure. Never silently remove required phase-one functionality to make a sprint appear complete.
+
+## Sprint overview
+
+| Sprint | Goal | Status | Depends on | Exit evidence |
+| --- | --- | --- | --- | --- |
+| 0 | Establish the public project foundation | Done | None | Published documents and repository checks |
+| 1 | Model plans, approvals, and operation lifecycles | Planned | 0 | Typed domain package, CI, and behavior tests |
+| 2 | Persist and isolate user workflows | Planned | 1 | API/database integration and recovery tests |
+| 3 | Add grounded reasoning and personal memory | Planned | 2 | Retrieval, memory, and orchestration evaluations |
+| 4 | Deliver the conversational web experience | Planned | 3 | Accessible journeys and cancellation/reconnect checks |
+| 5 | Execute verified calendar changes | Planned | 4 | Live test-account flow and ambiguous-write recovery |
+| 6 | Complete the exercise, nutrition, and sleep loop | Planned | 5 | Domain evaluations, progress records, and weekly adjustments |
+| 7 | Validate and publish the showcase release | Planned | 6 | Reproducible demo, privacy checks, and measured load/failure reports |
+
+## Sprint 0: Project foundation
+
+Goal: publish English engineering documentation without claiming unimplemented capabilities.
+
+| Task | Deliverable and acceptance | Status | Evidence |
+| --- | --- | --- | --- |
+| S0-01 | Public repository with initial English documentation | Done | [Foundation commit](https://github.com/chriswu727/ai_personal_health_assistant/commit/9b9b9db89cf8ec7ab94016fa38518994c33495c9); visibility and matching local/remote SHA verified through GitHub CLI |
+| S0-02 | Phase-one requirements and long-term boundaries | Done | [Product scope](PRODUCT_SCOPE.md), P01-P11 and later-phase entry conditions |
+| S0-03 | Proposed architecture and external-action recovery semantics | Done | [Architecture](ARCHITECTURE.md), explicitly labeled as proposed |
+| S0-04 | Coding/review conventions and evaluation requirements | Done | [Contributing](../CONTRIBUTING.md), [evaluation strategy](EVALUATION.md), and [security policy](../SECURITY.md) |
+
+Review: 12 initial files were published; local documentation-link and English-content checks passed, as did Git whitespace checks. There is no application runtime, application test suite, or clinical validation. Retrospective: retain the separation between proposed capabilities and demonstrated results; introduce executable quality gates in Sprint 1.
+
+## Sprint 1: Tested domain foundation
+
+Status: Planned.
+
+Goal: implement deterministic plan and approval behavior that future model and calendar adapters must obey.
+
+Scope: backend domain package, development tooling, offline tests, and CI. Excludes UI, live model calls, calendar credentials, and deployment infrastructure.
+
+| Task | Deliverable | Acceptance criteria | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| S1-01 | Runtime/tooling decision and package setup | Record supported Python version and strict type-checking choice; lock dependencies; document reproducible installation and verification commands | Planned | Pending |
+| S1-02 | Typed plans and revisions | No framework/SDK dependencies in domain code; revisions preserve unrelated constraints and completed history; invalid input and stale edits are rejected | Planned | Pending |
+| S1-03 | Approval model | Bind owner, exact payload/version, scope, and expiration; changed, expired, revoked, and wrong-owner approvals cannot authorize execution | Planned | Pending |
+| S1-04 | Operation state machine | Define allowed transitions and ambiguous outcomes; test terminal/cancellation behavior; unknown results cannot authorize blind retries | Planned | Pending |
+| S1-05 | Behavioral tests | Synthetic fixtures cover invariants, invalid transitions, revision conflicts, approval invalidation, and deterministic time; tests run offline | Planned | Pending |
+| S1-06 | Automated quality gates | CI runs formatting, linting, strict type checking, tests, and package build with locked dependencies; commands also pass locally | Planned | Pending |
+| S1-07 | Review and documentation | Record implemented contracts, reproducible examples, validation evidence, limitations, and the next sprint breakdown | Planned | Pending |
+
+Definition of Done: S1-01 through S1-07 pass acceptance, changes are on main, and the review records evidence. The domain package runs without a model provider, network, database, or personal data. Domain tests do not establish persistent recovery or live calendar reliability.
+
+Review: pending. Blockers: none identified. Carryover: none.
+
+## Later sprint outlines
+
+These outlines are not started tasks. Expand each into task IDs, acceptance criteria, and evidence fields before moving it to In Progress.
+
+### Sprint 2: Persistent service
+
+Deliver identity integration, ownership enforcement, migrations, plan persistence, version checks, durable operations, and worker leases. Verify cross-user denial, concurrent edits, expired leases, restart recovery, and transaction boundaries. Use a simulated provider; live calendar integration remains Sprint 5.
+
+### Sprint 3: Evidence and memory
+
+Deliver curated retrieval with provenance, editable memory, contradiction/expiration handling, a model adapter, and bounded orchestration producing validated plans. Verify citation support, deletion across sessions, retrieved prompt injection resistance, and missing-evidence behavior. Create held-out synthetic evaluations; keep paid calls opt-in.
+
+### Sprint 4: Web experience
+
+Deliver Assistant, Today, Plan, Records, and Settings foundations, visible memory controls, and action previews. Verify streaming, cancellation, reconnect, keyboard navigation, mobile layouts, and partial edits. Distinguish proposed and completed actions. Calendar previews remain explicitly simulated until Sprint 5.
+
+### Sprint 5: Calendar execution
+
+Deliver OAuth connection/revocation, availability reads, neutral titles, exact confirmation, owned-event create/update/cancel, and reconciliation. Verify real test-account actions plus timeout-after-write, duplicate delivery, revocation, and partial success. Keep personal calendar data out of reports.
+
+### Sprint 6: Integrated wellness loop
+
+Complete exercise, nutrition, sleep, routines, manual observations, weekly reflection, export, and deletion. Verify hard constraints, time-zone/DST behavior, observation-versus-goal semantics, and appropriate out-of-scope responses. Map P01-P11 to implementation and acceptance evidence; close coverage gaps before release.
+
+### Sprint 7: Showcase release
+
+Deliver reproducible deployment, a synthetic demo, redacted telemetry, fault injection, bounded load experiments, cost measurements, and limitations. Document retention/backup deletion, permissions, and source licenses. Separate live-provider and simulated-provider measurements. Freeze evaluation configuration and publish failures alongside successes.
+
+## Sprint review template
+
+At each sprint close, record:
+
+- Goal and delivered user/engineering outcomes.
+- Completed task IDs and commit/PR links.
+- Checks executed, results, environment, and evidence locations.
+- Unverified behavior and known limitations.
+- Scope changes, blockers, and explicitly assigned carryover.
+- A short retrospective and the next sprint's concrete tasks.
