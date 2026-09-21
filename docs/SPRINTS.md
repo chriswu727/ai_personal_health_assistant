@@ -8,7 +8,8 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
   domain slice, merged in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1).
 - Active sprint: Sprint 2, persistence and ownership enforcement. Part one, plan
   storage with ownership and ancestry, is merged as `5deeaa2`. Part two, constraint,
-  approval, and operation storage with worker leases, is underway.
+  approval, and operation storage with worker leases, is merged as `ecafaf3`. Part
+  three, restart recovery and adversarial path probes, is underway.
 - Application release: none. There is no runnable application or service.
 
 ## Working method
@@ -189,10 +190,10 @@ delivery, model providers, calendar credentials, and deployment infrastructure.
 | S2-01 | Persistence stack and test harness | Record the database, driver, and migration tool with alternatives; add a schema and a reversible initial migration; integration tests require an explicit database URL and are skipped without one; the default suite stays offline; CI runs both against a standard-runner service container | Done | [ADR 0004](decisions/0004-persistence-stack.md); `adapters/persistence/schema.py`, `migrations/versions/0001_initial_schema.py`, `tests/integration/` |
 | S2-02 | Plan persistence with version checks | Store plan versions and items losslessly, including time zones, attribute tokens, and completion status; a concurrent insert of the same version is rejected as a stale revision rather than merged | Done | `adapters/persistence/plans.py`, `mapping.py`; `tests/integration/test_plan_repository.py` |
 | S2-03 | Ownership enforcement | Every repository read and write is scoped by owner; a cross-user identifier returns nothing rather than another user's row; no access path omits the owner | Done | Owner column on every user-owned table; `test_another_user_reads_nothing`, `test_writing_into_another_users_plan_is_refused` |
-| S2-04 | Constraint and approval persistence | Round-trip constraints, approvals, approved actions, and their targets; a stored approval authorizes exactly what the in-memory one did | In Progress | `adapters/persistence/constraints.py`, `approvals.py`; database round-trip tests |
-| S2-05 | Durable operations and worker leases | Persist the operation lifecycle; claim work with a lease so two workers cannot hold one operation; an expired lease returns work for reconciliation rather than marking it failed | In Progress | `adapters/persistence/operations.py`, `application/worker.py`; lease and claim tests |
-| S2-06 | Restart and transaction boundaries | A failure mid-transaction leaves no partial plan version or half-queued operation; work in flight when a worker dies is recoverable after restart | Planned | Pending |
-| S2-07 | Adversarial path probes | Alongside per-unit tests, probes attempt to reach a protected state by an unintended path: cross-user access, a revision that skips the version check, and a claim that bypasses authorization. Carried from the Sprint 1 retrospective | Planned | Pending |
+| S2-04 | Constraint and approval persistence | Round-trip constraints, approvals, approved actions, and their targets; a stored approval authorizes exactly what the in-memory one did | Done | `adapters/persistence/constraints.py`, `approvals.py`; database round-trip tests |
+| S2-05 | Durable operations and worker leases | Persist the operation lifecycle; claim work with a lease so two workers cannot hold one operation; an expired lease returns work for reconciliation rather than marking it failed | Done | `adapters/persistence/operations.py`, `application/worker.py`; lease and claim tests |
+| S2-06 | Restart and transaction boundaries | A failure mid-transaction leaves no partial plan version or half-queued operation; work in flight when a worker dies is recoverable after restart | In Progress | `tests/integration/test_restart_recovery.py`; a real worker process killed mid-flight |
+| S2-07 | Adversarial path probes | Alongside per-unit tests, probes attempt to reach a protected state by an unintended path: cross-user access, a revision that skips the version check, and a claim that bypasses authorization. Carried from the Sprint 1 retrospective | In Progress | `tests/integration/test_adversarial_paths.py`; migration 0003 hardening |
 | S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | Planned | Pending |
 
 Definition of Done: S2-01 through S2-08 pass acceptance, changes are on main, and
@@ -281,7 +282,8 @@ access path not scoped to an owner, and `expired_leases` is a second one.
 
 ### Verification, part two
 
-Part two covers S2-04 and S2-05 and is awaiting review.
+Part two merged in [pull request #3](https://github.com/chriswu727/ai_personal_health_assistant/pull/3) as `ecafaf3` after one review round.
+S2-04 and S2-05 are Done.
 
 | Check | Where | Result |
 | --- | --- | --- |
@@ -301,6 +303,45 @@ lands in `outcome_unknown` without consuming another attempt.
 Not run: restart recovery across a real process exit, overlapping-transaction
 tests beyond the claim path, and the adversarial probes. Those are S2-06 and
 S2-07.
+
+### Verification, part three
+
+Part three covers S2-06 and S2-07 and is awaiting review.
+
+| Check | Where | Result |
+| --- | --- | --- |
+| Format, lint, mypy strict | Local | Pass, 51 source files, native platform and `win32` |
+| Offline tests | Local | Pass, 103 tests |
+| Database tests | Local | Pass, 49 tests against PostgreSQL 17 |
+| Build | Local | Pass, sdist and wheel |
+
+152 tests pass locally with the database configured, 103 with 49 skipped
+without it. CI results are recorded on the pull request.
+
+The restart tests kill a real process rather than advancing a clock. A worker
+subprocess claims one operation and leaves through `os._exit`, which unwinds
+nothing and closes nothing. Killed after committing, it leaves a live lease that
+nobody else may take until it expires, after which recovery reaches
+`outcome_unknown` and reconciliation settles it without consuming another
+attempt. Killed inside its transaction, it leaves the operation queued with no
+lease and no attempt spent, and a healthy worker takes it immediately.
+
+Child processes are launched through a worker thread rather than the event
+loop. The database tests must run on a selector loop because psycopg rejects the
+Windows proactor loop, and Windows selector loops do not implement asyncio
+subprocess transports, so the two requirements collide. An offline smoke test
+starts a child from the database loop, which is the combination that fails on
+Windows and needs no PostgreSQL to catch.
+
+The adversarial probes each assert the specific constraint the server named, so
+a probe cannot pass because an unrelated rule happened to fire. Migration 0003
+adds the two guarantees they revealed were missing: a row cannot reference
+another user's plan version, and an operation cannot pass confirmation without a
+recorded approval. `advance` now also checks the transition table, since it is
+the one place an object built outside the domain functions enters storage.
+
+Not run: any live provider call, and throughput or contention measurement under
+load. Those belong to Sprint 5 and Sprint 7.
 
 Review: pending. Blockers: none identified. Carryover: none.
 

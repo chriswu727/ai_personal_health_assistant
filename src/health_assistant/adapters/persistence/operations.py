@@ -19,9 +19,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from health_assistant.adapters.persistence.mapping import operation_row, to_operation
 from health_assistant.adapters.persistence.schema import tool_operations
-from health_assistant.domain.errors import OperationConflictError, OwnershipError
+from health_assistant.domain.errors import (
+    InvalidTransitionError,
+    OperationConflictError,
+    OwnershipError,
+)
 from health_assistant.domain.identifiers import OperationId, UserId
-from health_assistant.domain.operations import OperationState, ToolOperation
+from health_assistant.domain.operations import (
+    ALLOWED_TRANSITIONS,
+    OperationState,
+    ToolOperation,
+)
 from health_assistant.domain.scheduling import require_utc
 
 _MUTABLE_COLUMNS = (
@@ -65,6 +73,14 @@ class SqlOperationRepository:
         """
         if operation.operation_id != previous.operation_id:
             raise OperationConflictError("the previous snapshot describes a different operation")
+        # The state machine is checked here too, not only in the domain: an object
+        # built outside the domain functions must not be able to write a state the
+        # lifecycle never permits from the one on record.
+        if (
+            operation.state is not previous.state
+            and operation.state not in ALLOWED_TRANSITIONS[previous.state]
+        ):
+            raise InvalidTransitionError(str(previous.state), str(operation.state))
         row = operation_row(operation)
         result = await self._connection.execute(
             update(tool_operations)

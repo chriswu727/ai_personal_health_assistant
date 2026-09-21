@@ -65,6 +65,9 @@ plan_versions = Table(
         ["plan_versions.plan_id", "plan_versions.version"],
         name="fk_plan_versions_parent",
     ),
+    # Lets other tables reference a version together with its owner, so a row
+    # cannot claim a plan version that belongs to somebody else.
+    UniqueConstraint("plan_id", "version", "owner_id", name="uq_plan_versions_owner_identity"),
     Index("ix_plan_versions_owner_id", "owner_id"),
 )
 
@@ -136,8 +139,8 @@ approvals = Table(
     Column("expires_at", DateTime(timezone=True), nullable=False),
     Column("revoked_at", DateTime(timezone=True), nullable=True),
     ForeignKeyConstraint(
-        ["plan_id", "plan_version"],
-        ["plan_versions.plan_id", "plan_versions.version"],
+        ["plan_id", "plan_version", "owner_id"],
+        ["plan_versions.plan_id", "plan_versions.version", "plan_versions.owner_id"],
         ondelete="CASCADE",
         name="fk_approvals_plan_version",
     ),
@@ -189,14 +192,20 @@ tool_operations = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     ForeignKeyConstraint(
-        ["plan_id", "plan_version"],
-        ["plan_versions.plan_id", "plan_versions.version"],
+        ["plan_id", "plan_version", "owner_id"],
+        ["plan_versions.plan_id", "plan_versions.version", "plan_versions.owner_id"],
         ondelete="CASCADE",
         name="fk_tool_operations_plan_version",
     ),
     # One key per external write: a duplicate would let two operations present
     # the same key to a provider and defeat its deduplication.
     UniqueConstraint("idempotency_key", name="uq_tool_operations_idempotency_key"),
+    # Nothing gets past confirmation without a recorded approval. Cancellation
+    # is the one way out of the states before it, so it is exempt.
+    CheckConstraint(
+        "state IN ('proposed', 'awaiting_confirmation', 'cancelled') OR approval_id IS NOT NULL",
+        name="ck_tool_operations_approved_before_execution",
+    ),
     CheckConstraint("attempts >= 0", name="ck_tool_operations_attempts_non_negative"),
     CheckConstraint("retry_budget >= 1", name="ck_tool_operations_budget_positive"),
     CheckConstraint(
