@@ -6,10 +6,12 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
 
 - Completed: Sprint 0, the repository and design foundation. Sprint 1, the tested
   domain slice, merged in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1).
-- Active sprint: Sprint 2, persistence and ownership enforcement. Part one, plan
-  storage with ownership and ancestry, is merged as `5deeaa2`. Part two, constraint,
-  approval, and operation storage with worker leases, is merged as `ecafaf3`. Part
-  three, restart recovery and adversarial path probes, is underway.
+- Active sprint: Sprint 2, persistence and ownership enforcement. All three
+  implementation parts are merged: plan storage with ownership and ancestry as
+  `5deeaa2`, constraint, approval, and operation storage with worker leases as
+  `ecafaf3`, and restart recovery with adversarial path probes as `4e3f60e`.
+  S2-08, this closing change, is the only work left and the sprint stays In
+  Progress until it is on main.
 - Application release: none. There is no runnable application or service.
 
 ## Working method
@@ -176,7 +178,7 @@ Carryover: none. Blockers: none.
 
 ## Sprint 2: Persistent service
 
-Status: In Progress.
+Status: In Progress. S2-01 through S2-07 are Done; S2-08 is this change.
 
 Goal: give the domain a durable home in which ownership is enforced on every
 access path and concurrent revisions cannot silently overwrite each other.
@@ -192,9 +194,9 @@ delivery, model providers, calendar credentials, and deployment infrastructure.
 | S2-03 | Ownership enforcement | Every repository read and write is scoped by owner; a cross-user identifier returns nothing rather than another user's row; no access path omits the owner | Done | Owner column on every user-owned table; `test_another_user_reads_nothing`, `test_writing_into_another_users_plan_is_refused` |
 | S2-04 | Constraint and approval persistence | Round-trip constraints, approvals, approved actions, and their targets; a stored approval authorizes exactly what the in-memory one did | Done | `adapters/persistence/constraints.py`, `approvals.py`; database round-trip tests |
 | S2-05 | Durable operations and worker leases | Persist the operation lifecycle; claim work with a lease so two workers cannot hold one operation; an expired lease returns work for reconciliation rather than marking it failed | Done | `adapters/persistence/operations.py`, `application/worker.py`; lease and claim tests |
-| S2-06 | Restart and transaction boundaries | A failure mid-transaction leaves no partial plan version or half-queued operation; work in flight when a worker dies is recoverable after restart | In Progress | `tests/integration/test_restart_recovery.py`; a real worker process killed mid-flight |
-| S2-07 | Adversarial path probes | Alongside per-unit tests, probes attempt to reach a protected state by an unintended path: cross-user access, a revision that skips the version check, and a claim that bypasses authorization. Carried from the Sprint 1 retrospective | In Progress | `tests/integration/test_adversarial_paths.py`; migration 0003 hardening |
-| S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | Planned | Pending |
+| S2-06 | Restart and transaction boundaries | A failure mid-transaction leaves no partial plan version or half-queued operation; work in flight when a worker dies is recoverable after restart | Done | `tests/integration/test_restart_recovery.py`; a real worker process killed mid-flight |
+| S2-07 | Adversarial path probes | Alongside per-unit tests, probes attempt to reach a protected state by an unintended path: cross-user access, a revision that skips the version check, and a claim that bypasses authorization. Carried from the Sprint 1 retrospective | Done | `tests/integration/test_adversarial_paths.py`; migration 0003 hardening |
+| S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | In Progress | This change: the sprint review below, the Sprint 3 breakdown, and the roadmap correction |
 
 Definition of Done: S2-01 through S2-08 pass acceptance, changes are on main, and
 the review records evidence. Integration results must state which ran locally and
@@ -306,7 +308,8 @@ S2-07.
 
 ### Verification, part three
 
-Part three covers S2-06 and S2-07 and is awaiting review.
+Part three merged in [pull request #4](https://github.com/chriswu727/ai_personal_health_assistant/pull/4) as `4e3f60e` after one review
+round. S2-06 and S2-07 are Done.
 
 | Check | Where | Result |
 | --- | --- | --- |
@@ -343,19 +346,132 @@ the one place an object built outside the domain functions enters storage.
 Not run: any live provider call, and throughput or contention measurement under
 load. Those belong to Sprint 5 and Sprint 7.
 
+### Sprint review
+
+Delivered: PostgreSQL storage for users, plans and their versions and items,
+constraints, approvals and their approved actions, and external operations, all
+through asynchronous SQLAlchemy and psycopg with Alembic migrations. Ownership
+is a query predicate on every access path except the worker's two queue scans,
+`claim_next` and `expired_leases`, which return work to do and no user content;
+[ADR 0005](decisions/0005-worker-claiming.md) records why and what bounds them. Plan ancestry, referential ownership,
+and the requirement that nothing passes confirmation without a recorded approval
+are database facts rather than conventions. A worker claims work with
+`SELECT ... FOR UPDATE SKIP LOCKED`, re-authorizes it against current records
+before executing, and cannot have its lease erased by a write built on a stale
+read. Three migrations, three decision records, and 152 tests.
+
+Verification: recorded above, separated by where each check ran. Every review
+round across the three implementation pull requests reported findings, and each
+one was reproduced before any change and re-checked after. Merged as `5deeaa2`,
+`ecafaf3`, and `4e3f60e`.
+
+Unverified, and not claimed: throughput or behavior under contention; recovery
+from a connection lost mid-commit, where the client cannot tell whether the
+transaction landed; any live provider call; anything clinical.
+
+Scope: Sprint 2's committed scope, S2-01 through S2-08, is complete. The
+milestone it was mapped to is not; see the roadmap note below.
+
+### Retrospective
+
+The action item carried from Sprint 1 worked. The adversarial probes in S2-07
+did not merely confirm existing guarantees: two of them found that a row could
+reference another user's plan version, and that an operation could reach
+execution with no approval recorded at all. Probes that take unintended routes
+earn their place, and they stay.
+
+The findings fell into three groups, and each group is worth its own note. They
+were not all the same problem, and saying so would flatter the analysis.
+
+**The claim path had one defect in three places, and it was about time.** A plan
+approved earlier, a confirmation granted earlier, a snapshot read earlier. The
+domain was written as if each function saw the current world, which held while
+everything lived in memory within one call. Storage introduced a gap between
+reading and acting, nothing in the design named that gap, and so each place that
+had one got it wrong independently: the worker authorized against the version it
+had queued under, a stale save cleared a revocation, another erased a live
+lease.
+
+Action: when a component reads state and later acts on it, name the staleness
+window in the design before writing the code, and test the interleaving rather
+than the endpoints. Sprint 3 has the same shape in its orchestration, which
+reads memory and evidence and then acts on them.
+
+**Some guarantees existed in only one layer.** Plan ancestry, referential
+ownership, and the requirement that nothing passes confirmation without a
+recorded approval were all enforced by a repository method and nowhere else.
+That is invisible while every writer goes through that method, and a probe that
+wrote through the connection found it immediately.
+
+Action: for a rule whose violation is damaging and whose shape is structural,
+decide deliberately whether it also belongs in the schema, and record the
+decision. [ADR 0006](decisions/0006-invariants-below-the-domain.md) is that
+record and deliberately keeps the list short.
+
+**Two individually correct changes can collide, on a platform nobody develops
+on.** The selector event loop that made psycopg work on Windows is the reason
+child processes could not be started there. Neither change was wrong; their
+intersection was, and it was invisible on the platform where the work happened.
+The same sprint also produced a Windows-only type error from a platform branch
+that read as ordinary Python here. What caught it was running the check in
+the cheap environment: `mypy --platform win32` reproduced a Windows-only typing
+failure from macOS, and the offline child-launch smoke test covers the runtime
+equivalent without needing a database.
+
+Action: for every platform-specific or environment-specific decision, add a
+check that runs where the work happens, not only where the problem appears.
+
+A third observation, not an action. The reviewer's environment, Windows without
+PostgreSQL, found what mine structurally could not, and CI found what neither
+did. That asymmetry is worth preserving rather than smoothing away.
+
+Carryover: none within the sprint. Blockers: none.
+
+## Sprint 3: Evidence and memory
+
+Status: Planned.
+
+Goal: let a model propose a plan without letting it decide whether that plan is
+safe, whether a claim is supported, or what the user actually said.
+
+Scope: an evidence corpus with provenance, personal memory the user can inspect
+and correct, a single bounded boundary for model calls, and orchestration that
+turns a proposal into a validated plan version. Excludes HTTP delivery, calendar
+credentials, and any paid call in the default suite.
+
+| Task | Deliverable | Acceptance criteria | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| S3-01 | Evidence corpus and retrieval | Curated, permitted sources stored with source, passage, retrieval time, and applicable publication metadata; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call | Planned | Pending |
+| S3-02 | Citation support | A claim links to the passages that support it, and a passage that does not support it is rejected; a resolvable URL alone never counts as support; missing or conflicting evidence is reported rather than smoothed over | Planned | Pending |
+| S3-03 | Editable personal memory | Confirmed facts, temporary observations, goals, and unconfirmed inferences are distinct kinds; each carries provenance, observed and recorded time, validity, and confirmation status; a user can correct and delete, and deletion also removes derived retrieval records and cached context | Planned | Pending |
+| S3-04 | Contradiction and expiry | A new fact that contradicts a stored one surfaces for confirmation instead of overwriting it; an expired fact stops applying without being deleted; an unconfirmed inference never becomes a hard constraint without the user, which the domain already requires and storage must not weaken | Planned | Pending |
+| S3-05 | Model adapter | One boundary for model calls with a deadline, a bounded tool-call count, token and cost budgets, and cancellation; a deterministic substitute drives the default suite; live calls are opt-in, never default, and their cost is recorded | Planned | Pending |
+| S3-06 | Untrusted content | Retrieved passages and tool results cannot change instructions, memory, or authorization; probes attempt exactly that through each path that carries text into a prompt and are refused; provenance keeps public knowledge distinguishable from private memory | Planned | Pending |
+| S3-07 | Orchestration to a validated plan | A proposal becomes a typed plan version only after the deterministic constraint validator accepts it; a proposal violating a hard constraint cannot reach approval by any path; orchestration is bounded by deadline and budget and records why it stopped | Planned | Pending |
+| S3-08 | Held-out evaluations | Development fixtures are separate from held-out sets; each run records commit, environment, dataset version, model version, configuration, repetition count, denominator, failures, and cost; variability is reported for nondeterministic runs; an LLM judge is supplementary evidence and never the sole authority | Planned | Pending |
+| S3-09 | Review and documentation | Implemented contracts, verification separated by where it ran, limitations, and the Sprint 4 breakdown | Planned | Pending |
+
+Definition of Done: S3-01 through S3-09 pass acceptance, changes are on main, and
+the review records evidence. Evaluation results must state which ran against a
+deterministic substitute and which against a live model. No clinical claim
+follows from any of it.
+
+Carried from the Sprint 2 retrospective: orchestration reads memory and evidence
+and then acts on them, which is the same staleness shape that produced every
+defect in Sprint 2. Name the window between reading and acting in the design
+before writing the code, and test the interleaving rather than the endpoints.
+
 Review: pending. Blockers: none identified. Carryover: none.
 
 ## Later sprint outlines
 
 These outlines are not started tasks. Expand each into task IDs, acceptance criteria, and evidence fields before moving it to In Progress.
 
-### Sprint 3: Evidence and memory
-
-Deliver curated retrieval with provenance, editable memory, contradiction/expiration handling, a model adapter, and bounded orchestration producing validated plans. Verify citation support, deletion across sessions, retrieved prompt injection resistance, and missing-evidence behavior. Create held-out synthetic evaluations; keep paid calls opt-in.
-
 ### Sprint 4: Web experience
 
-Deliver Assistant, Today, Plan, Records, and Settings foundations, visible memory controls, and action previews. Verify streaming, cancellation, reconnect, keyboard navigation, mobile layouts, and partial edits. Distinguish proposed and completed actions. Calendar previews remain explicitly simulated until Sprint 5.
+Deliver the authenticated HTTP API and identity integration that M2 still needs, then the Assistant, Today, Plan, Records, and Settings foundations, visible memory controls, and action previews. Verify that identity comes from the provider rather than a caller-supplied identifier, that ownership holds across the HTTP boundary, and that streaming, cancellation, reconnect, keyboard navigation, mobile layouts, and partial edits behave. Distinguish proposed and completed actions. Calendar previews remain explicitly simulated until Sprint 5.
+
+Refine these into task IDs with acceptance criteria before starting, and keep the M2 API and identity criteria among them so the milestone closes on evidence.
 
 ### Sprint 5: Calendar execution
 
