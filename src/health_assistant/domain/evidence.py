@@ -18,7 +18,12 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from health_assistant.domain.errors import ValidationError
-from health_assistant.domain.identifiers import PassageId, SourceId, require_identifier
+from health_assistant.domain.identifiers import (
+    PassageId,
+    RetrievalId,
+    SourceId,
+    require_identifier,
+)
 from health_assistant.domain.scheduling import require_utc
 
 _WORD = re.compile(r"\w+", re.UNICODE)
@@ -153,3 +158,50 @@ def rank_passages(
 def corpus_terms(passages: Sequence[EvidencePassage]) -> frozenset[str]:
     """Every term the corpus can match, for tests and for index checks."""
     return frozenset().union(*(passage.terms for passage in passages)) if passages else frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class Candidates:
+    """The passages a narrowing step produced, and whether it stopped early.
+
+    ``truncated`` is the honest part. Narrowing orders by identifier, not by
+    relevance, so a bound that cuts in is perfectly capable of discarding the
+    passage that would have ranked first. Saying so is the difference between a
+    weak answer and a wrong one.
+    """
+
+    passages: tuple[EvidencePassage, ...]
+    truncated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceRetrieval:
+    """What one search asked, what it found, and when.
+
+    Kept so that a citation can be audited later: without a record of what was
+    retrieved at the time, a claim made from it cannot be checked once the
+    corpus moves on.
+    """
+
+    retrieval_id: RetrievalId
+    query: str
+    retrieved_at: datetime
+    results: tuple[RetrievedPassage, ...]
+    candidates_considered: int
+    truncated: bool
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "retrieval_id", require_identifier(self.retrieval_id, "retrieval_id")
+        )
+        object.__setattr__(self, "retrieved_at", require_utc(self.retrieved_at, "retrieved_at"))
+        if self.candidates_considered < len(self.results):
+            raise ValidationError("more results than candidates considered")
+        ranks = [item.rank for item in self.results]
+        if ranks != sorted(ranks) or len(set(ranks)) != len(ranks):
+            raise ValidationError("results must carry distinct ranks in order")
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether every matching passage in the corpus was considered."""
+        return not self.truncated

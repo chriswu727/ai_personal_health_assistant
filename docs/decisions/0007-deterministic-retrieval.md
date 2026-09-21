@@ -43,6 +43,17 @@ passages could come back in either order, and a citation recorded today would
 not be reproducible tomorrow. Scoring ties are expected in a small corpus, so
 the tiebreak is part of the contract rather than an implementation detail.
 
+Every search is recorded: the query, the instant, the ranked results, and
+whether the bound cut in. Results copy the passage rather than pointing at it,
+with no foreign key back to the corpus, so the record still describes the
+retrieval after the corpus has been curated again. A citation that cannot be
+checked against what was actually retrieved is a claim, not a citation.
+
+The bound on candidates is reported rather than merely documented. Narrowing
+orders by identifier, so a cutoff is perfectly capable of discarding the passage
+that would have ranked first; one extra row is fetched to detect that, and the
+result says so. A silent cutoff turns a weak answer into a wrong one.
+
 The corpus tables carry no owner column and no repository method scopes them.
 Published documents are identical for every user, and the absence is deliberate
 and visible in the code, not only in a document.
@@ -51,7 +62,10 @@ and visible in the code, not only in a document.
 
 Ranking is weak and should be described that way. It matches words, so a
 passage about peanuts will not answer a question about satay, and a plural will
-not match its singular. The README says so rather than leaving a reader to
+not match its singular. It also has no notion of which words carry meaning: a
+common word like "and" scores exactly as much as the subject of the question, so
+a wordy query ranks partly by noise. A test asserts that behavior rather than
+pretending it away, and the README says so rather than leaving a reader to
 assume otherwise.
 
 That weakness is contained by what comes next rather than by hoping it is small.
@@ -65,6 +79,12 @@ Replace the ranker when a held-out evaluation shows retrieval is the limiting
 factor, and record what the number was. Not before.
 
 The candidate fetch is bounded, which suits a curated corpus and would not suit
-a large one. A corpus big enough for that bound to cut off relevant passages is
-the trigger to move ranking closer to the data, and the bound is explicit so the
-cutoff is visible rather than silent.
+a large one. A corpus big enough for the bound to cut in is the trigger to move
+ranking closer to the data. Until then the cutoff is reported on every result
+and stored on every record, so a caller can tell a complete search from a
+partial one instead of being given a confident-looking answer either way.
+
+Recording every search writes a row on a read path. That is the intended trade:
+the point of retention is that a past citation can be audited, and a retrieval
+nobody recorded cannot be. High-volume automated querying would change the
+arithmetic and is the trigger to revisit.

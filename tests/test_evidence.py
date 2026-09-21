@@ -122,3 +122,16 @@ def test_a_result_records_what_matched_and_when() -> None:
     assert results[0].matched_terms == {"walking"}
     assert results[0].query == "walking kayaking"
     assert results[0].retrieved_at == instant
+
+
+def test_common_words_count_as_matches() -> None:
+    """A known weakness of the baseline, asserted so it cannot drift unnoticed.
+
+    Scoring weighs every word equally, so a query full of common ones ranks by
+    noise. ADR 0007 records why the ranker stays plain until an evaluation gives
+    a number to improve, and S3-02 is what stops a weak match from becoming a
+    confident claim.
+    """
+    results = rank_passages(CORPUS, "walking and sleep", at=at())
+
+    assert results[0].matched_terms == {"walking", "and", "sleep"}

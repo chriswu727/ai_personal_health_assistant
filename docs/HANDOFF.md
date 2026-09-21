@@ -38,8 +38,8 @@ container:
 
 - `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and
   `uv run mypy --platform win32`: passed, 82 files, 56 source files, strict mode.
-- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 170 passed.
-- `uv run pytest` without it: 114 passed, 56 skipped, which are the database tests.
+- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 174 passed.
+- `uv run pytest` without it: 115 passed, 59 skipped, which are the database tests.
 - `uv build`: passed.
 
 Not established: retrieval quality. The ranker matches words, so it will not
@@ -69,9 +69,14 @@ otherwise:
   response and deserves its own treatment.
 - Constraint matching is exact on declared attributes and does not infer that
   one ingredient implies another; an ingredient taxonomy belongs to Sprint 3.
-- There is no runnable app, model provider, evidence retrieval, live calendar
-  integration, evaluation result, or production-readiness claim. The provider is
-  simulated throughout.
+- The evidence corpus is empty on a fresh install. Storage and retrieval exist;
+  curating real permitted sources is S3-10, which is Blocked on the maintainer
+  naming them. Nothing has been checked for whether a passage supports a claim.
+- Retrieval ranks by word overlap only. It weighs a common word as heavily as
+  the subject of a question and cannot connect related words.
+- There is no runnable app, model provider, live calendar integration,
+  evaluation result, or production-readiness claim. The provider is simulated
+  throughout.
 
 Do not mark a Sprint 2 task complete until the change is on main and its
 individual acceptance criteria pass.

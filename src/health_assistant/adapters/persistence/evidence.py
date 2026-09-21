@@ -12,10 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from health_assistant.adapters.persistence.schema import (
     evidence_passages,
+    evidence_retrieval_results,
+    evidence_retrievals,
     evidence_sources,
 )
-from health_assistant.domain.evidence import EvidencePassage, EvidenceSource
-from health_assistant.domain.identifiers import PassageId, SourceId
+from health_assistant.domain.evidence import (
+    Candidates,
+    EvidencePassage,
+    EvidenceRetrieval,
+    EvidenceSource,
+    RetrievedPassage,
+)
+from health_assistant.domain.identifiers import PassageId, RetrievalId, SourceId
 
 DEFAULT_CANDIDATE_LIMIT = 200
 
@@ -74,22 +82,23 @@ class SqlEvidenceRepository:
 
     async def candidates(
         self, terms: frozenset[str], *, limit: int = DEFAULT_CANDIDATE_LIMIT
-    ) -> tuple[EvidencePassage, ...]:
-        """Return passages sharing at least one term with the query.
+    ) -> Candidates:
+        """Return passages sharing at least one term, and say if the bound cut in.
 
-        This narrows; it does not rank. Ranking is a pure function in the domain
-        so that the order a citation depends on can be tested without a database
-        and reproduced anywhere.
+        This narrows; it does not rank. Narrowing orders by identifier, so a
+        bound that cuts in can discard the passage that would have ranked first.
+        One extra row is fetched purely to detect that, because a silent cutoff
+        turns a weak answer into a wrong one.
         """
         if not terms:
-            return ()
+            return Candidates(passages=(), truncated=False)
         result = await self._connection.execute(
             select(evidence_passages)
             .where(evidence_passages.c.terms.overlap(sorted(terms)))
             .order_by(evidence_passages.c.passage_id)
-            .limit(limit)
+            .limit(limit + 1)
         )
-        return tuple(
+        found = tuple(
             EvidencePassage(
                 passage_id=PassageId(row["passage_id"]),
                 source_id=SourceId(row["source_id"]),
@@ -97,6 +106,76 @@ class SqlEvidenceRepository:
                 text=row["text"],
             )
             for row in result.mappings()
+        )
+        return Candidates(passages=found[:limit], truncated=len(found) > limit)
+
+    async def record_retrieval(self, retrieval: EvidenceRetrieval) -> None:
+        """Store what a search asked, found, and could not see.
+
+        Result rows copy the passage rather than pointing at it, so the record
+        still describes the retrieval after the corpus is curated again.
+        """
+        await self._connection.execute(
+            insert(evidence_retrievals).values(
+                retrieval_id=retrieval.retrieval_id,
+                query=retrieval.query,
+                retrieved_at=retrieval.retrieved_at,
+                candidates_considered=retrieval.candidates_considered,
+                truncated=retrieval.truncated,
+            )
+        )
+        if not retrieval.results:
+            return
+        await self._connection.execute(
+            insert(evidence_retrieval_results),
+            [
+                {
+                    "retrieval_id": retrieval.retrieval_id,
+                    "rank": item.rank,
+                    "passage_id": item.passage.passage_id,
+                    "source_id": item.passage.source_id,
+                    "passage_locator": item.passage.locator,
+                    "passage_text": item.passage.text,
+                    "matched_terms": sorted(item.matched_terms),
+                }
+                for item in retrieval.results
+            ],
+        )
+
+    async def retrieval(self, retrieval_id: RetrievalId) -> EvidenceRetrieval | None:
+        """Load a past retrieval from its own record, joining nothing."""
+        header = await self._connection.execute(
+            select(evidence_retrievals).where(evidence_retrievals.c.retrieval_id == retrieval_id)
+        )
+        row = header.mappings().one_or_none()
+        if row is None:
+            return None
+        results = await self._connection.execute(
+            select(evidence_retrieval_results)
+            .where(evidence_retrieval_results.c.retrieval_id == retrieval_id)
+            .order_by(evidence_retrieval_results.c.rank)
+        )
+        return EvidenceRetrieval(
+            retrieval_id=RetrievalId(row["retrieval_id"]),
+            query=row["query"],
+            retrieved_at=row["retrieved_at"],
+            results=tuple(
+                RetrievedPassage(
+                    passage=EvidencePassage(
+                        passage_id=PassageId(item["passage_id"]),
+                        source_id=SourceId(item["source_id"]),
+                        locator=item["passage_locator"],
+                        text=item["passage_text"],
+                    ),
+                    query=row["query"],
+                    matched_terms=frozenset(item["matched_terms"]),
+                    rank=item["rank"],
+                    retrieved_at=row["retrieved_at"],
+                )
+                for item in results.mappings()
+            ),
+            candidates_considered=row["candidates_considered"],
+            truncated=row["truncated"],
         )
 
     async def source(self, source_id: SourceId) -> EvidenceSource | None:

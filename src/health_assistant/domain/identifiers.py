@@ -12,6 +12,7 @@ ApprovalId = NewType("ApprovalId", str)
 OperationId = NewType("OperationId", str)
 SourceId = NewType("SourceId", str)
 PassageId = NewType("PassageId", str)
+RetrievalId = NewType("RetrievalId", str)
 
 
 def require_identifier(value: str, field: str) -> str:

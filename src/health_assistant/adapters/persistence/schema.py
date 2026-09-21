@@ -8,6 +8,7 @@ in its own column because an offset alone cannot survive a DST change.
 
 from sqlalchemy import (
     ARRAY,
+    Boolean,
     CheckConstraint,
     Column,
     Date,
@@ -259,4 +260,38 @@ evidence_passages = Table(
     Column("terms", POSTGRES_ARRAY(Text), nullable=False),
     Index("ix_evidence_passages_source_id", "source_id"),
     Index("ix_evidence_passages_terms", "terms", postgresql_using="gin"),
+)
+
+
+evidence_retrievals = Table(
+    "evidence_retrievals",
+    metadata,
+    Column("retrieval_id", Text, primary_key=True),
+    Column("query", Text, nullable=False),
+    Column("retrieved_at", DateTime(timezone=True), nullable=False),
+    Column("candidates_considered", Integer, nullable=False),
+    Column("truncated", Boolean, nullable=False),
+    Index("ix_evidence_retrievals_retrieved_at", "retrieved_at"),
+)
+
+# A snapshot, not a reference. The passage columns are copied rather than
+# joined, and there is deliberately no foreign key to evidence_passages: the
+# record has to survive the corpus being curated afterwards, which is the whole
+# reason for keeping it.
+evidence_retrieval_results = Table(
+    "evidence_retrieval_results",
+    metadata,
+    Column(
+        "retrieval_id",
+        Text,
+        ForeignKey("evidence_retrievals.retrieval_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("rank", Integer, primary_key=True),
+    Column("passage_id", Text, nullable=False),
+    Column("source_id", Text, nullable=False),
+    Column("passage_locator", Text, nullable=False),
+    Column("passage_text", Text, nullable=False),
+    Column("matched_terms", POSTGRES_ARRAY(Text), nullable=False),
+    CheckConstraint("rank >= 1", name="ck_evidence_retrieval_results_rank_positive"),
 )

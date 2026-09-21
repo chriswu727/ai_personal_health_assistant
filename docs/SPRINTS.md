@@ -440,7 +440,7 @@ credentials, and any paid call in the default suite.
 
 | Task | Deliverable | Acceptance criteria | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| S3-01 | Evidence corpus and retrieval | Curated, permitted sources stored with source, passage, retrieval time, and applicable publication metadata; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call | In Progress | `domain/evidence.py`, `adapters/persistence/evidence.py`, `application/evidence.py`; migration 0004 |
+| S3-01 | Evidence storage and deterministic retrieval | Sources and passages are stored with publisher, publication date, locator, and the permission under which they may be quoted; every retrieval is recorded with its query, time, results, and whether it saw the whole corpus; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call. **Narrowed**: curating an actual corpus moved to S3-10 | In Progress | `domain/evidence.py`, `adapters/persistence/evidence.py`, `application/evidence.py`; migration 0004 |
 | S3-02 | Citation support | A claim links to the passages that support it, and a passage that does not support it is rejected; a resolvable URL alone never counts as support; missing or conflicting evidence is reported rather than smoothed over | Planned | Pending |
 | S3-03 | Editable personal memory | Confirmed facts, temporary observations, goals, and unconfirmed inferences are distinct kinds; each carries provenance, observed and recorded time, validity, and confirmation status; a user can correct and delete, and deletion also removes derived retrieval records and cached context | Planned | Pending |
 | S3-04 | Contradiction and expiry | A new fact that contradicts a stored one surfaces for confirmation instead of overwriting it; an expired fact stops applying without being deleted; an unconfirmed inference never becomes a hard constraint without the user, which the domain already requires and storage must not weaken | Planned | Pending |
@@ -449,27 +449,53 @@ credentials, and any paid call in the default suite.
 | S3-07 | Orchestration to a validated plan | A proposal becomes a typed plan version only after the deterministic constraint validator accepts it; a proposal violating a hard constraint cannot reach approval by any path; orchestration is bounded by deadline and budget and records why it stopped | Planned | Pending |
 | S3-08 | Held-out evaluations | Development fixtures are separate from held-out sets; each run records commit, environment, dataset version, model version, configuration, repetition count, denominator, failures, and cost; variability is reported for nondeterministic runs; an LLM judge is supplementary evidence and never the sole authority | Planned | Pending |
 | S3-09 | Review and documentation | Implemented contracts, verification separated by where it ran, limitations, and the Sprint 4 breakdown | Planned | Pending |
+| S3-10 | Curated corpus and loading path | A small set of named, permitted sources with their licences recorded, and a documented command that loads them reproducibly into an empty database; synthetic fixtures stay for the offline tests | **Blocked** | Needs the maintainer to name which sources the project may quote and confirm their licence terms. Not a technical blocker |
 
 Definition of Done: S3-01 through S3-09 pass acceptance, changes are on main, and
 the review records evidence. Evaluation results must state which ran against a
 deterministic substitute and which against a live model. No clinical claim
 follows from any of it.
 
+Scope change, recorded rather than absorbed: S3-01 originally covered both the
+storage and retrieval machinery and the curation of a real corpus. Only the first
+is delivered. Choosing which health sources the project may quote, and under what
+licence, is a maintainer decision rather than an implementation detail, so it is
+split into S3-10 and marked Blocked with the decision it waits on. A fresh
+install therefore has an empty corpus, and nothing in this sprint should be read
+as claiming otherwise.
+
 Carried from the Sprint 2 retrospective: orchestration reads memory and evidence
 and then acts on them, which is the same staleness shape that produced every
 defect in Sprint 2. Name the window between reading and acting in the design
 before writing the code, and test the interleaving rather than the endpoints.
+
+### Review round 1, S3-01
+
+Four findings, all in this change. Two were reproduced against PostgreSQL first:
+
+| Finding | Reproduced behavior | Resolution |
+| --- | --- | --- |
+| Retrieval was never recorded | The query, time, and ranked results existed only in the returned object, so a past citation could not be audited once the corpus moved on | Every search writes a record whose results copy the passage rather than pointing at it, so it survives later curation |
+| The candidate bound cut silently | 200 passages matching one term crowded out a passage matching three; narrowing orders by identifier, so the best passage was discarded and the caller could not tell | The bound is detected by fetching one extra row and reported on the result and in the record |
+| S3-01 claimed a curated corpus | Only storage, retrieval, and synthetic fixtures were delivered; a fresh install has no evidence at all | S3-01 narrowed to the machinery; curating real sources split into S3-10 and Blocked on a maintainer decision |
+| The handoff contradicted itself | One section described retrieval as implemented while another still said it did not exist | Reconciled, and the limitations now name the empty corpus and the ranker's weaknesses |
+
+Writing the tests surfaced a fifth thing nobody reported: the scorer counts a
+common word like "and" as a match, so a wordy query ranks partly by noise. It is
+now asserted in a test and recorded in ADR 0007 and the README rather than left
+for a reader to discover. Fixing it means a better ranker, which ADR 0007 defers
+until an evaluation gives a number to improve.
 
 ### Verification, S3-01
 
 | Check | Where | Result |
 | --- | --- | --- |
 | Format, lint, mypy strict | Local | Pass, 56 source files, native platform and `win32` |
-| Offline tests | Local | Pass, 114 tests |
-| Database tests | Local | Pass, 56 tests against PostgreSQL 17 |
+| Offline tests | Local | Pass, 115 tests |
+| Database tests | Local | Pass, 59 tests against PostgreSQL 17 |
 | Build | Local | Pass, sdist and wheel |
 
-170 tests pass locally with the database configured, 114 with 56 skipped without
+174 tests pass locally with the database configured, 115 with 59 skipped without
 it. CI results are recorded on the pull request.
 
 Determinism is tested rather than asserted: the same corpus is shuffled twenty

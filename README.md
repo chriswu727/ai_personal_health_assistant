@@ -88,10 +88,12 @@ enforced in code and covered by offline tests:
   no owner, stored with the source, publisher, publication date, locator, and
   the permission under which it may be quoted. Retrieval narrows in the database
   and ranks in the domain by a total order, so the same query returns the same
-  passages in the same order anywhere. The ranking is a plain word-overlap
-  baseline: it will not find a passage about peanuts from a question about
-  satay, and checking that a passage actually supports a claim is separate work,
-  still to come.
+  passages in the same order anywhere, and the record says whether the search saw
+  the whole corpus or stopped early. The ranking is a plain word-overlap
+  baseline: it will not find a passage about peanuts from a question about satay,
+  and it weighs a word like "and" as heavily as the subject of the question.
+  Checking that a passage actually supports a claim is separate work, still to
+  come.
 - **Queued work is re-authorized against current records before it runs.** A
   worker takes the oldest operation no other worker holds, then loads that
   operation's owner's **current** plan and its approval and asks the domain

@@ -5,11 +5,17 @@ from typing import Protocol
 
 from health_assistant.domain.approvals import Approval
 from health_assistant.domain.constraints import Constraint, ConstraintSet
-from health_assistant.domain.evidence import EvidencePassage, EvidenceSource
+from health_assistant.domain.evidence import (
+    Candidates,
+    EvidencePassage,
+    EvidenceRetrieval,
+    EvidenceSource,
+)
 from health_assistant.domain.identifiers import (
     ApprovalId,
     OperationId,
     PlanId,
+    RetrievalId,
     SourceId,
     UserId,
 )
@@ -119,11 +125,19 @@ class EvidenceRepository(Protocol):
 
     async def add_passage(self, passage: EvidencePassage) -> None: ...
 
-    async def candidates(
-        self, terms: frozenset[str], *, limit: int = 200
-    ) -> tuple[EvidencePassage, ...]:
-        """Return passages sharing at least one term. This narrows, it does not rank."""
+    async def candidates(self, terms: frozenset[str], *, limit: int = 200) -> Candidates:
+        """Return passages sharing at least one term, and say if the bound cut in.
+
+        This narrows, it does not rank, so a cutoff can discard the passage that
+        would have ranked first. The caller is told rather than left to assume.
+        """
         ...
+
+    async def record_retrieval(self, retrieval: EvidenceRetrieval) -> None:
+        """Store what a search asked, found, and could not see."""
+        ...
+
+    async def retrieval(self, retrieval_id: RetrievalId) -> EvidenceRetrieval | None: ...
 
     async def source(self, source_id: SourceId) -> EvidenceSource | None: ...
 
