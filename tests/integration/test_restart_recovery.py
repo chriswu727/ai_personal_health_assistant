@@ -4,10 +4,6 @@ These tests kill a real process rather than advancing a clock, because the
 question is what the database is left holding when a worker never comes back.
 """
 
-import asyncio
-import os
-import sys
-
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -18,7 +14,7 @@ from health_assistant.application.worker import (
 )
 from health_assistant.domain.identifiers import OperationId, PlanId
 from health_assistant.domain.operations import OperationState, ProviderOutcome, reconcile
-from tests.integration.conftest import REPOSITORY_ROOT
+from tests.child_process import run_child
 from tests.integration.crash_worker import CRASH_EXIT_CODE, LEASE, WORKER_ID
 from tests.integration.support import build_approval, register_users, seed_queued_operation
 from tests.support import OWNER, PLAN, at, make_item, make_plan
@@ -28,19 +24,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 async def _crash_a_worker(database_url: str, mode: str) -> None:
     """Run a worker that claims one operation and then dies in the given way."""
-    process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "tests.integration.crash_worker",
-        database_url,
-        mode,
-        cwd=str(REPOSITORY_ROOT),
-        env={**os.environ, "PYTHONPATH": str(REPOSITORY_ROOT)},
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await process.communicate()
-    assert process.returncode == CRASH_EXIT_CODE, stderr.decode()
+    child = await run_child("tests.integration.crash_worker", database_url, mode, timeout=30.0)
+    assert child.returncode == CRASH_EXIT_CODE, child.stderr
 
 
 async def test_a_worker_that_dies_after_committing_leaves_recoverable_work(

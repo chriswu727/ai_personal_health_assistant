@@ -310,12 +310,12 @@ Part three covers S2-06 and S2-07 and is awaiting review.
 
 | Check | Where | Result |
 | --- | --- | --- |
-| Format, lint, mypy strict | Local | Pass, 47 source files, native platform and `win32` |
-| Offline tests | Local | Pass, 101 tests |
+| Format, lint, mypy strict | Local | Pass, 51 source files, native platform and `win32` |
+| Offline tests | Local | Pass, 103 tests |
 | Database tests | Local | Pass, 49 tests against PostgreSQL 17 |
 | Build | Local | Pass, sdist and wheel |
 
-150 tests pass locally with the database configured, 101 with 49 skipped
+152 tests pass locally with the database configured, 103 with 49 skipped
 without it. CI results are recorded on the pull request.
 
 The restart tests kill a real process rather than advancing a clock. A worker
@@ -325,6 +325,13 @@ nobody else may take until it expires, after which recovery reaches
 `outcome_unknown` and reconciliation settles it without consuming another
 attempt. Killed inside its transaction, it leaves the operation queued with no
 lease and no attempt spent, and a healthy worker takes it immediately.
+
+Child processes are launched through a worker thread rather than the event
+loop. The database tests must run on a selector loop because psycopg rejects the
+Windows proactor loop, and Windows selector loops do not implement asyncio
+subprocess transports, so the two requirements collide. An offline smoke test
+starts a child from the database loop, which is the combination that fails on
+Windows and needs no PostgreSQL to catch.
 
 The adversarial probes each assert the specific constraint the server named, so
 a probe cannot pass because an unrelated rule happened to fire. Migration 0003
