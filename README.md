@@ -124,6 +124,6 @@ Run every quality gate exactly as CI runs it:
 ```
 
 Database tests need PostgreSQL and are skipped without it; see
-[Contributing](CONTRIBUTING.md). There is no application to start. Sprint 2 is in
-progress: storage and the worker's claiming use cases are in place, and restart
-recovery and adversarial path probes are next.
+[Contributing](CONTRIBUTING.md). There is no application to start. Sprint 2 is
+complete: storage, ownership, worker claiming, restart recovery. Sprint 3 adds
+evidence retrieval, editable memory, and a bounded model adapter.
