@@ -6,10 +6,12 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
 
 - Completed: Sprint 0, the repository and design foundation. Sprint 1, the tested
   domain slice, merged in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1).
-- Active sprint: Sprint 2, persistence and ownership enforcement. Part one, plan
-  storage with ownership and ancestry, is merged as `5deeaa2`. Part two, constraint,
-  approval, and operation storage with worker leases, is merged as `ecafaf3`. Part
-  three, restart recovery and adversarial path probes, is underway.
+- Active sprint: Sprint 2, persistence and ownership enforcement. All three
+  implementation parts are merged: plan storage with ownership and ancestry as
+  `5deeaa2`, constraint, approval, and operation storage with worker leases as
+  `ecafaf3`, and restart recovery with adversarial path probes as `4e3f60e`.
+  S2-08, this closing change, is the only work left and the sprint stays In
+  Progress until it is on main.
 - Application release: none. There is no runnable application or service.
 
 ## Working method
@@ -349,16 +351,19 @@ load. Those belong to Sprint 5 and Sprint 7.
 Delivered: PostgreSQL storage for users, plans and their versions and items,
 constraints, approvals and their approved actions, and external operations, all
 through asynchronous SQLAlchemy and psycopg with Alembic migrations. Ownership
-is a query predicate on every access path. Plan ancestry, referential ownership,
+is a query predicate on every access path except the worker's two queue scans,
+`claim_next` and `expired_leases`, which return work to do and no user content;
+[ADR 0005](decisions/0005-worker-claiming.md) records why and what bounds them. Plan ancestry, referential ownership,
 and the requirement that nothing passes confirmation without a recorded approval
 are database facts rather than conventions. A worker claims work with
 `SELECT ... FOR UPDATE SKIP LOCKED`, re-authorizes it against current records
 before executing, and cannot have its lease erased by a write built on a stale
 read. Three migrations, three decision records, and 152 tests.
 
-Verification: recorded above, separated by where each check ran. Four review
-rounds reported eight defects; all were reproduced before any change and
-re-checked after. Merged as `5deeaa2`, `ecafaf3`, and `4e3f60e`.
+Verification: recorded above, separated by where each check ran. Every review
+round across the three implementation pull requests reported findings, and each
+one was reproduced before any change and re-checked after. Merged as `5deeaa2`,
+`ecafaf3`, and `4e3f60e`.
 
 Unverified, and not claimed: throughput or behavior under contention; recovery
 from a connection lost mid-commit, where the client cannot tell whether the
@@ -375,25 +380,40 @@ reference another user's plan version, and that an operation could reach
 execution with no approval recorded at all. Probes that take unintended routes
 earn their place, and they stay.
 
-Two patterns are worth carrying forward.
+The findings fell into three groups, and each group is worth its own note. They
+were not all the same problem, and saying so would flatter the analysis.
 
-**Every defect in this sprint was about time.** A plan approved earlier, a
-confirmation granted earlier, a snapshot read earlier. The domain was written as
-if each function saw the current world, which was true while everything lived in
-memory within one call. Storage introduced a gap between reading and acting, and
-nothing in the design named that gap, so each place that had one got it wrong
-independently: the worker authorized against the version it had queued under, a
-stale save cleared a revocation, another erased a live lease.
+**The claim path had one defect in three places, and it was about time.** A plan
+approved earlier, a confirmation granted earlier, a snapshot read earlier. The
+domain was written as if each function saw the current world, which held while
+everything lived in memory within one call. Storage introduced a gap between
+reading and acting, nothing in the design named that gap, and so each place that
+had one got it wrong independently: the worker authorized against the version it
+had queued under, a stale save cleared a revocation, another erased a live
+lease.
 
 Action: when a component reads state and later acts on it, name the staleness
 window in the design before writing the code, and test the interleaving rather
 than the endpoints. Sprint 3 has the same shape in its orchestration, which
 reads memory and evidence and then acts on them.
 
-**Two individually correct changes can collide.** The selector event loop that
-made psycopg work on Windows is the reason child processes could not be started
-there. Neither change was wrong; their intersection was, and it was invisible on
-the platform where the work happened. What caught it was running the check in
+**Some guarantees existed in only one layer.** Plan ancestry, referential
+ownership, and the requirement that nothing passes confirmation without a
+recorded approval were all enforced by a repository method and nowhere else.
+That is invisible while every writer goes through that method, and a probe that
+wrote through the connection found it immediately.
+
+Action: for a rule whose violation is damaging and whose shape is structural,
+decide deliberately whether it also belongs in the schema, and record the
+decision. [ADR 0006](decisions/0006-invariants-below-the-domain.md) is that
+record and deliberately keeps the list short.
+
+**Two individually correct changes can collide, on a platform nobody develops
+on.** The selector event loop that made psycopg work on Windows is the reason
+child processes could not be started there. Neither change was wrong; their
+intersection was, and it was invisible on the platform where the work happened.
+The same sprint also produced a Windows-only type error from a platform branch
+that read as ordinary Python here. What caught it was running the check in
 the cheap environment: `mypy --platform win32` reproduced a Windows-only typing
 failure from macOS, and the offline child-launch smoke test covers the runtime
 equivalent without needing a database.
@@ -449,7 +469,9 @@ These outlines are not started tasks. Expand each into task IDs, acceptance crit
 
 ### Sprint 4: Web experience
 
-Deliver Assistant, Today, Plan, Records, and Settings foundations, visible memory controls, and action previews. Verify streaming, cancellation, reconnect, keyboard navigation, mobile layouts, and partial edits. Distinguish proposed and completed actions. Calendar previews remain explicitly simulated until Sprint 5.
+Deliver the authenticated HTTP API and identity integration that M2 still needs, then the Assistant, Today, Plan, Records, and Settings foundations, visible memory controls, and action previews. Verify that identity comes from the provider rather than a caller-supplied identifier, that ownership holds across the HTTP boundary, and that streaming, cancellation, reconnect, keyboard navigation, mobile layouts, and partial edits behave. Distinguish proposed and completed actions. Calendar previews remain explicitly simulated until Sprint 5.
+
+Refine these into task IDs with acceptance criteria before starting, and keep the M2 API and identity criteria among them so the milestone closes on evidence.
 
 ### Sprint 5: Calendar execution
 

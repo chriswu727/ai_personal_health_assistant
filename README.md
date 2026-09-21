@@ -124,6 +124,7 @@ Run every quality gate exactly as CI runs it:
 ```
 
 Database tests need PostgreSQL and are skipped without it; see
-[Contributing](CONTRIBUTING.md). There is no application to start. Sprint 2 is
-complete: storage, ownership, worker claiming, restart recovery. Sprint 3 adds
-evidence retrieval, editable memory, and a bounded model adapter.
+[Contributing](CONTRIBUTING.md). There is no application to start. Sprint 2's
+implementation is merged, covering storage, ownership, worker claiming, and
+restart recovery; its closing review is still in flight. Sprint 3 adds evidence
+retrieval, editable memory, and a bounded model adapter.
