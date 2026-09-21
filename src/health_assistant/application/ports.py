@@ -5,7 +5,14 @@ from typing import Protocol
 
 from health_assistant.domain.approvals import Approval
 from health_assistant.domain.constraints import Constraint, ConstraintSet
-from health_assistant.domain.identifiers import ApprovalId, OperationId, PlanId, UserId
+from health_assistant.domain.evidence import EvidencePassage, EvidenceSource
+from health_assistant.domain.identifiers import (
+    ApprovalId,
+    OperationId,
+    PlanId,
+    SourceId,
+    UserId,
+)
 from health_assistant.domain.operations import ToolOperation
 from health_assistant.domain.plans import PlanVersion
 
@@ -100,6 +107,27 @@ class OperationRepository(Protocol):
     ) -> tuple[ToolOperation, ...]: ...
 
 
+class EvidenceRepository(Protocol):
+    """Storage for the curated corpus.
+
+    Nothing here takes an owner. These are published documents, identical for
+    every user, and the absence of an owner parameter is the point rather than
+    an omission.
+    """
+
+    async def add_source(self, source: EvidenceSource) -> None: ...
+
+    async def add_passage(self, passage: EvidencePassage) -> None: ...
+
+    async def candidates(
+        self, terms: frozenset[str], *, limit: int = 200
+    ) -> tuple[EvidencePassage, ...]:
+        """Return passages sharing at least one term. This narrows, it does not rank."""
+        ...
+
+    async def source(self, source_id: SourceId) -> EvidenceSource | None: ...
+
+
 class UnitOfWork(Protocol):
     """One transactional boundary exposing the repositories it spans."""
 
@@ -117,3 +145,6 @@ class UnitOfWork(Protocol):
 
     @property
     def operations(self) -> OperationRepository: ...
+
+    @property
+    def evidence(self) -> EvidenceRepository: ...

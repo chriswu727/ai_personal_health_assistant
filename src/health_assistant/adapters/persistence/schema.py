@@ -10,6 +10,7 @@ from sqlalchemy import (
     ARRAY,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -20,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import ARRAY as POSTGRES_ARRAY
 
 metadata = MetaData()
 
@@ -220,4 +222,41 @@ tool_operations = Table(
     Index("ix_tool_operations_owner_id", "owner_id"),
     # Supports the worker's claim scan without a sequential table read.
     Index("ix_tool_operations_state_created", "state", "created_at"),
+)
+
+
+# Public knowledge, not personal data. These two tables carry no owner column
+# and no repository method scopes them, because no user owns a published source.
+# Keeping them visibly separate from the owned tables is the point: a passage is
+# text somebody else wrote, quotable and citable, never a private fact and never
+# an instruction.
+evidence_sources = Table(
+    "evidence_sources",
+    metadata,
+    Column("source_id", Text, primary_key=True),
+    Column("title", Text, nullable=False),
+    Column("publisher", Text, nullable=False),
+    Column("locator", Text, nullable=False),
+    Column("license", Text, nullable=False),
+    Column("published_on", Date, nullable=True),
+    Column("recorded_at", DateTime(timezone=True), nullable=False),
+)
+
+evidence_passages = Table(
+    "evidence_passages",
+    metadata,
+    Column("passage_id", Text, primary_key=True),
+    Column(
+        "source_id",
+        Text,
+        ForeignKey("evidence_sources.source_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("locator", Text, nullable=False),
+    Column("text", Text, nullable=False),
+    # Stored rather than derived on read so the overlap index has something to
+    # work on; the domain is what computes them, from the same function.
+    Column("terms", POSTGRES_ARRAY(Text), nullable=False),
+    Index("ix_evidence_passages_source_id", "source_id"),
+    Index("ix_evidence_passages_terms", "terms", postgresql_using="gin"),
 )

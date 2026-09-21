@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from health_assistant.adapters.persistence.approvals import SqlApprovalRepository
 from health_assistant.adapters.persistence.constraints import SqlConstraintRepository
+from health_assistant.adapters.persistence.evidence import SqlEvidenceRepository
 from health_assistant.adapters.persistence.operations import SqlOperationRepository
 from health_assistant.adapters.persistence.plans import SqlPlanRepository
 from health_assistant.adapters.persistence.users import SqlUserRepository
@@ -47,6 +48,10 @@ class SqlUnitOfWork:
     @property
     def operations(self) -> SqlOperationRepository:
         return SqlOperationRepository(self.connection)
+
+    @property
+    def evidence(self) -> SqlEvidenceRepository:
+        return SqlEvidenceRepository(self.connection)
 
 
 @asynccontextmanager

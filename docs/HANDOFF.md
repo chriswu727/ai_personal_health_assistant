@@ -6,10 +6,11 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
 
 - Canonical repository: `chriswu727/ai_personal_health_assistant`.
 - Sprint 0 foundation: Done. Sprint 1 domain slice: Done, merged as `e00c949`.
-- Sprint 2: S2-01 through S2-07 are Done, merged as `5deeaa2`, `ecafaf3`, and
-  `4e3f60e`. S2-08, the sprint review and the Sprint 3 breakdown, is this change
-  and stays In Progress until it is on main.
-- Sprint 3, evidence and memory, is refined into S3-01 through S3-09 and Planned.
+- Sprint 2: Done, closed by `83d4ce6`.
+- Sprint 3, evidence and memory: In Progress. S3-01, the evidence corpus and
+  retrieval, is complete on `sprint-3/evidence-corpus` and awaiting review, so it
+  stays In Progress until that change is on main. S3-02 through S3-09 are
+  Planned.
 - Milestone M2 is **partly met**. Sprint 2 delivered its persistence, isolation,
   durable jobs, and recovery; the API and identity integration it also names
   arrive in Sprint 4. The roadmap records this rather than redefining M2.
@@ -22,33 +23,36 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
 
 ## Latest change
 
-Closed Sprint 2 with its review and retrospective, refined Sprint 3 into S3-01
-through S3-09 with acceptance criteria, and corrected the roadmap where a
-milestone had been mapped to a single sprint that never covered all of it.
-
-No application behavior changed.
+Added the curated evidence corpus and a deterministic retriever. Passages store
+their normalized terms so the database can narrow by overlap; ranking is a pure
+function in the domain with a total order, so the same query against the same
+corpus returns the same passages in the same order and a citation can be
+reproduced. The corpus carries no owner, because a published document is the
+same for every user. Migration 0004 adds the two tables. See
+[ADR 0007](decisions/0007-deterministic-retrieval.md).
 
 ## Verification
 
-This is a documentation change, so the evidence that matters is consistency
-rather than test counts:
+Local run on macOS 15.7.4 arm64 with Python 3.12.13, against PostgreSQL 17 in a
+container:
 
-- Relative-link check across every Markdown file: passed.
-- `git diff --check`: passed.
-- The configured gates still pass unchanged: format, lint, `mypy`, `mypy
-  --platform win32`, 103 offline tests, and the build. With
-  `HEALTH_ASSISTANT_TEST_DATABASE_URL` set, 152 tests pass against PostgreSQL 17.
+- `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and
+  `uv run mypy --platform win32`: passed, 82 files, 56 source files, strict mode.
+- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 170 passed.
+- `uv run pytest` without it: 114 passed, 56 skipped, which are the database tests.
+- `uv build`: passed.
 
-Not run, and not applicable: nothing here exercises application behavior, and no
-result below is evidence about the product.
+Not established: retrieval quality. The ranker matches words, so it will not
+find a passage about peanuts from a question about satay. That is recorded in
+ADR 0007 and in the README rather than left for a reader to assume otherwise.
 
 ## Next action
 
-Once this change is on main, mark S2-08 Done, close Sprint 2, and start Sprint 3
-at S3-01: the evidence corpus and retrieval with provenance, deterministic for a
-fixed corpus and query, with no network call in the default suite. Read the
-Sprint 3 section before starting; it carries an action from the Sprint 2
-retrospective about naming the window between reading state and acting on it.
+Once S3-01 is on main, mark it Done and start S3-02: checking that a retrieved
+passage actually supports the claim attached to it, that a resolvable locator
+alone never counts as support, and that missing or conflicting evidence is
+reported rather than smoothed over. S3-02 is what keeps the deliberately plain
+ranker from turning into an unsupported claim, so it should not be deferred.
 
 ## Blockers and limitations
 

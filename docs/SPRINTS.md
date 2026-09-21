@@ -6,12 +6,11 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
 
 - Completed: Sprint 0, the repository and design foundation. Sprint 1, the tested
   domain slice, merged in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1).
-- Active sprint: Sprint 2, persistence and ownership enforcement. All three
-  implementation parts are merged: plan storage with ownership and ancestry as
-  `5deeaa2`, constraint, approval, and operation storage with worker leases as
-  `ecafaf3`, and restart recovery with adversarial path probes as `4e3f60e`.
-  S2-08, this closing change, is the only work left and the sprint stays In
-  Progress until it is on main.
+- Completed: Sprint 2, persistence and ownership enforcement, across four pull
+  requests and closed by `83d4ce6`.
+- Active sprint: Sprint 3, evidence and memory. S3-01, the evidence corpus and
+  retrieval, is underway; S3-02 through S3-09 are Planned.
+- Open milestone: M2 is partly met. Its API and identity criteria are Sprint 4's.
 - Application release: none. There is no runnable application or service.
 
 ## Working method
@@ -37,8 +36,8 @@ A sprint closes only when its committed acceptance criteria are met. Record the 
 | --- | --- | --- | --- | --- |
 | 0 | Establish the public project foundation | Done | None | Published documents and repository checks |
 | 1 | Model plans, approvals, and operation lifecycles | Done | 0 | [Merged in #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1); 98 offline tests, local and CI checks green |
-| 2 | Persist and isolate user workflows | In Progress | 1 | Migrations, ownership-enforcing repositories, concurrency and recovery tests |
-| 3 | Add grounded reasoning and personal memory | Planned | 2 | Retrieval, memory, and orchestration evaluations |
+| 2 | Persist and isolate user workflows | Done | 1 | [Merged across #2, #3, #4, #5](https://github.com/chriswu727/ai_personal_health_assistant/pull/5); 152 tests, migrations, concurrency and crash recovery |
+| 3 | Add grounded reasoning and personal memory | In Progress | 2 | Retrieval, memory, and orchestration evaluations |
 | 4 | Deliver the conversational web experience | Planned | 3 | Accessible journeys and cancellation/reconnect checks |
 | 5 | Execute verified calendar changes | Planned | 4 | Live test-account flow and ambiguous-write recovery |
 | 6 | Complete the exercise, nutrition, and sleep loop | Planned | 5 | Domain evaluations, progress records, and weekly adjustments |
@@ -178,7 +177,7 @@ Carryover: none. Blockers: none.
 
 ## Sprint 2: Persistent service
 
-Status: In Progress. S2-01 through S2-07 are Done; S2-08 is this change.
+Status: Done. All of S2-01 through S2-08 are Done, closed by `83d4ce6`.
 
 Goal: give the domain a durable home in which ownership is enforced on every
 access path and concurrent revisions cannot silently overwrite each other.
@@ -196,7 +195,7 @@ delivery, model providers, calendar credentials, and deployment infrastructure.
 | S2-05 | Durable operations and worker leases | Persist the operation lifecycle; claim work with a lease so two workers cannot hold one operation; an expired lease returns work for reconciliation rather than marking it failed | Done | `adapters/persistence/operations.py`, `application/worker.py`; lease and claim tests |
 | S2-06 | Restart and transaction boundaries | A failure mid-transaction leaves no partial plan version or half-queued operation; work in flight when a worker dies is recoverable after restart | Done | `tests/integration/test_restart_recovery.py`; a real worker process killed mid-flight |
 | S2-07 | Adversarial path probes | Alongside per-unit tests, probes attempt to reach a protected state by an unintended path: cross-user access, a revision that skips the version check, and a claim that bypasses authorization. Carried from the Sprint 1 retrospective | Done | `tests/integration/test_adversarial_paths.py`; migration 0003 hardening |
-| S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | In Progress | This change: the sprint review below, the Sprint 3 breakdown, and the roadmap correction |
+| S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | Done | This change: the sprint review below, the Sprint 3 breakdown, and the roadmap correction |
 
 Definition of Done: S2-01 through S2-08 pass acceptance, changes are on main, and
 the review records evidence. Integration results must state which ran locally and
@@ -429,7 +428,7 @@ Carryover: none within the sprint. Blockers: none.
 
 ## Sprint 3: Evidence and memory
 
-Status: Planned.
+Status: In Progress.
 
 Goal: let a model propose a plan without letting it decide whether that plan is
 safe, whether a claim is supported, or what the user actually said.
@@ -441,7 +440,7 @@ credentials, and any paid call in the default suite.
 
 | Task | Deliverable | Acceptance criteria | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| S3-01 | Evidence corpus and retrieval | Curated, permitted sources stored with source, passage, retrieval time, and applicable publication metadata; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call | Planned | Pending |
+| S3-01 | Evidence corpus and retrieval | Curated, permitted sources stored with source, passage, retrieval time, and applicable publication metadata; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call | In Progress | `domain/evidence.py`, `adapters/persistence/evidence.py`, `application/evidence.py`; migration 0004 |
 | S3-02 | Citation support | A claim links to the passages that support it, and a passage that does not support it is rejected; a resolvable URL alone never counts as support; missing or conflicting evidence is reported rather than smoothed over | Planned | Pending |
 | S3-03 | Editable personal memory | Confirmed facts, temporary observations, goals, and unconfirmed inferences are distinct kinds; each carries provenance, observed and recorded time, validity, and confirmation status; a user can correct and delete, and deletion also removes derived retrieval records and cached context | Planned | Pending |
 | S3-04 | Contradiction and expiry | A new fact that contradicts a stored one surfaces for confirmation instead of overwriting it; an expired fact stops applying without being deleted; an unconfirmed inference never becomes a hard constraint without the user, which the domain already requires and storage must not weaken | Planned | Pending |
@@ -460,6 +459,32 @@ Carried from the Sprint 2 retrospective: orchestration reads memory and evidence
 and then acts on them, which is the same staleness shape that produced every
 defect in Sprint 2. Name the window between reading and acting in the design
 before writing the code, and test the interleaving rather than the endpoints.
+
+### Verification, S3-01
+
+| Check | Where | Result |
+| --- | --- | --- |
+| Format, lint, mypy strict | Local | Pass, 56 source files, native platform and `win32` |
+| Offline tests | Local | Pass, 114 tests |
+| Database tests | Local | Pass, 56 tests against PostgreSQL 17 |
+| Build | Local | Pass, sdist and wheel |
+
+170 tests pass locally with the database configured, 114 with 56 skipped without
+it. CI results are recorded on the pull request.
+
+Determinism is tested rather than asserted: the same corpus is shuffled twenty
+times under a seeded generator and ranked, and the order does not move. A
+separate test covers the tiebreak that makes the order total, because two
+equally scored passages are the case where a non-reproducible citation would
+come from.
+
+The corpus tables carry no owner column, which a test asserts structurally
+against the schema rather than trusting the code to have left it out.
+
+Not established: retrieval quality. The ranker matches words and nothing more,
+which [ADR 0007](decisions/0007-deterministic-retrieval.md) records along with
+what would justify replacing it. S3-02 is what keeps weak retrieval from turning
+into an unsupported claim.
 
 Review: pending. Blockers: none identified. Carryover: none.
 
