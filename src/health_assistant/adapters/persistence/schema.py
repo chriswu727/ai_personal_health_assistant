@@ -8,8 +8,10 @@ in its own column because an offset alone cannot survive a DST change.
 
 from sqlalchemy import (
     ARRAY,
+    Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -20,6 +22,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import ARRAY as POSTGRES_ARRAY
 
 metadata = MetaData()
 
@@ -220,4 +223,86 @@ tool_operations = Table(
     Index("ix_tool_operations_owner_id", "owner_id"),
     # Supports the worker's claim scan without a sequential table read.
     Index("ix_tool_operations_state_created", "state", "created_at"),
+)
+
+
+# Public knowledge, not personal data. These two tables carry no owner column
+# and no repository method scopes them, because no user owns a published source.
+# Keeping them visibly separate from the owned tables is the point: a passage is
+# text somebody else wrote, quotable and citable, never a private fact and never
+# an instruction.
+evidence_sources = Table(
+    "evidence_sources",
+    metadata,
+    Column("source_id", Text, primary_key=True),
+    Column("title", Text, nullable=False),
+    Column("publisher", Text, nullable=False),
+    Column("locator", Text, nullable=False),
+    Column("license", Text, nullable=False),
+    Column("published_on", Date, nullable=True),
+    Column("recorded_at", DateTime(timezone=True), nullable=False),
+)
+
+evidence_passages = Table(
+    "evidence_passages",
+    metadata,
+    Column("passage_id", Text, primary_key=True),
+    Column(
+        "source_id",
+        Text,
+        ForeignKey("evidence_sources.source_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("locator", Text, nullable=False),
+    Column("text", Text, nullable=False),
+    # Stored rather than derived on read so the overlap index has something to
+    # work on; the domain is what computes them, from the same function.
+    Column("terms", POSTGRES_ARRAY(Text), nullable=False),
+    Index("ix_evidence_passages_source_id", "source_id"),
+    Index("ix_evidence_passages_terms", "terms", postgresql_using="gin"),
+)
+
+
+# Unlike the corpus, retrieval history is owned. A query can carry personal
+# health information, so the record belongs to the user who searched, is read
+# only by them, and is removed with their account.
+evidence_retrievals = Table(
+    "evidence_retrievals",
+    metadata,
+    Column("retrieval_id", Text, primary_key=True),
+    Column("owner_id", Text, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False),
+    Column("query", Text, nullable=False),
+    Column("retrieved_at", DateTime(timezone=True), nullable=False),
+    Column("candidates_considered", Integer, nullable=False),
+    Column("truncated", Boolean, nullable=False),
+    Index("ix_evidence_retrievals_owner_id", "owner_id"),
+    Index("ix_evidence_retrievals_retrieved_at", "retrieved_at"),
+)
+
+# A snapshot, not a reference. The passage and its source's provenance are
+# copied rather than joined, and there is deliberately no foreign key to the
+# corpus: the record has to survive the corpus being curated afterwards, which
+# is the whole reason for keeping it, and a citation that has lost its document
+# is not a citation.
+evidence_retrieval_results = Table(
+    "evidence_retrieval_results",
+    metadata,
+    Column(
+        "retrieval_id",
+        Text,
+        ForeignKey("evidence_retrievals.retrieval_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("rank", Integer, primary_key=True),
+    Column("passage_id", Text, nullable=False),
+    Column("source_id", Text, nullable=False),
+    Column("passage_locator", Text, nullable=False),
+    Column("passage_text", Text, nullable=False),
+    Column("source_title", Text, nullable=False),
+    Column("source_publisher", Text, nullable=False),
+    Column("source_locator", Text, nullable=False),
+    Column("source_license", Text, nullable=False),
+    Column("source_published_on", Date, nullable=True),
+    Column("matched_terms", POSTGRES_ARRAY(Text), nullable=False),
+    CheckConstraint("rank >= 1", name="ck_evidence_retrieval_results_rank_positive"),
 )
