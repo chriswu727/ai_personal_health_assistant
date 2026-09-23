@@ -89,7 +89,10 @@ enforced in code and covered by offline tests:
   the permission under which it may be quoted. Retrieval narrows in the database
   and ranks in the domain by a total order, so the same query returns the same
   passages in the same order anywhere, and the record says whether the search saw
-  the whole corpus or stopped early. The ranking is a plain word-overlap
+  the whole corpus or stopped early. Each record keeps the cited document's
+  provenance with it, so curating the corpus later cannot rewrite the basis of a
+  past answer, and the record belongs to the user who asked, because a question
+  can say something about them. The ranking is a plain word-overlap
   baseline: it will not find a passage about peanuts from a question about satay,
   and it weighs a word like "and" as heavily as the subject of the question.
   Checking that a passage actually supports a claim is separate work, still to

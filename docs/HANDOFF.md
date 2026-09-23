@@ -27,8 +27,11 @@ Added the curated evidence corpus and a deterministic retriever. Passages store
 their normalized terms so the database can narrow by overlap; ranking is a pure
 function in the domain with a total order, so the same query against the same
 corpus returns the same passages in the same order and a citation can be
-reproduced. The corpus carries no owner, because a published document is the
-same for every user. Migration 0004 adds the two tables. See
+reproduced. Every search is recorded, owned by the user who made it because a
+query can carry personal health information, and each result copies the cited
+document's provenance so later curation cannot rewrite a past answer's basis.
+The corpus itself carries no owner, because a published document is the same
+for every user. Migrations 0004 and 0005 add the tables. See
 [ADR 0007](decisions/0007-deterministic-retrieval.md).
 
 ## Verification
@@ -37,9 +40,10 @@ Local run on macOS 15.7.4 arm64 with Python 3.12.13, against PostgreSQL 17 in a
 container:
 
 - `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, and
-  `uv run mypy --platform win32`: passed, 82 files, 56 source files, strict mode.
-- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 174 passed.
-- `uv run pytest` without it: 115 passed, 59 skipped, which are the database tests.
+  `uv run mypy --platform win32`: passed, 83 files, 56 source files, strict mode.
+- `uv run pytest` with `HEALTH_ASSISTANT_TEST_DATABASE_URL` set: 180 passed, after
+  recreating the database from empty so the amended migration 0005 applied fresh.
+- `uv run pytest` without it: 118 passed, 62 skipped, which are the database tests.
 - `uv build`: passed.
 
 Not established: retrieval quality. The ranker matches words, so it will not
@@ -49,7 +53,9 @@ ADR 0007 and in the README rather than left for a reader to assume otherwise.
 ## Next action
 
 Once S3-01 is on main, mark it Done and start S3-02: checking that a retrieved
-passage actually supports the claim attached to it, that a resolvable locator
+passage actually supports the claim attached to it. S3-10 stays Blocked until
+the maintainer names the permitted sources; do not close Sprint 3 without it or
+a recorded deferral. S3-02 is that a resolvable locator
 alone never counts as support, and that missing or conflicting evidence is
 reported rather than smoothed over. S3-02 is what keeps the deliberately plain
 ranker from turning into an unsupported claim, so it should not be deferred.
@@ -71,7 +77,12 @@ otherwise:
   one ingredient implies another; an ingredient taxonomy belongs to Sprint 3.
 - The evidence corpus is empty on a fresh install. Storage and retrieval exist;
   curating real permitted sources is S3-10, which is Blocked on the maintainer
-  naming them. Nothing has been checked for whether a passage supports a claim.
+  naming them and is part of Sprint 3's Definition of Done, so the sprint cannot
+  close around it. Nothing has been checked for whether a passage supports a
+  claim.
+- Retrieval history is user-owned: a query can carry personal health
+  information, so records are read only by their owner and leave with the
+  account. The corpus itself remains public and unowned.
 - Retrieval ranks by word overlap only. It weighs a common word as heavily as
   the subject of a question and cannot connect related words.
 - There is no runnable app, model provider, live calendar integration,

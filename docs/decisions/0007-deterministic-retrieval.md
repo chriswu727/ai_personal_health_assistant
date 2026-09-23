@@ -44,10 +44,22 @@ not be reproducible tomorrow. Scoring ties are expected in a small corpus, so
 the tiebreak is part of the contract rather than an implementation detail.
 
 Every search is recorded: the query, the instant, the ranked results, and
-whether the bound cut in. Results copy the passage rather than pointing at it,
-with no foreign key back to the corpus, so the record still describes the
-retrieval after the corpus has been curated again. A citation that cannot be
-checked against what was actually retrieved is a claim, not a citation.
+whether the bound cut in. Results copy the passage **and its source's
+provenance** rather than pointing at the corpus, with no foreign key back to it,
+so the record still describes the retrieval after the corpus has been curated
+again. A snapshot that kept the passage but lost the document it came from would
+not be a citation either; title, publisher, locator, licence, and publication
+date travel with each result.
+
+The corpus is public, but the record of consulting it is not. A query can carry
+personal health information, so each retrieval belongs to the user who made it,
+is readable only with their identifier, and is removed with their account. This
+is the one place in the evidence design where ownership applies, and it applies
+for the same reason it applies everywhere else in the project: the data says
+something about a person.
+
+A citation that cannot be checked against what was actually retrieved is a
+claim, not a citation.
 
 The bound on candidates is reported rather than merely documented. Narrowing
 orders by identifier, so a cutoff is perfectly capable of discarding the passage

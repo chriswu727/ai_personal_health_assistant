@@ -114,11 +114,13 @@ class OperationRepository(Protocol):
 
 
 class EvidenceRepository(Protocol):
-    """Storage for the curated corpus.
+    """Storage for the curated corpus and for each user's retrieval history.
 
-    Nothing here takes an owner. These are published documents, identical for
-    every user, and the absence of an owner parameter is the point rather than
-    an omission.
+    The corpus methods take no owner: sources and passages are published
+    documents, identical for every user, and the absence of an owner parameter
+    there is the point rather than an omission. Retrieval history is owned, and
+    reading it requires the owner, because a query can say something about the
+    person who asked it.
     """
 
     async def add_source(self, source: EvidenceSource) -> None: ...
@@ -133,13 +135,21 @@ class EvidenceRepository(Protocol):
         """
         ...
 
-    async def record_retrieval(self, retrieval: EvidenceRetrieval) -> None:
-        """Store what a search asked, found, and could not see."""
+    async def sources(self, source_ids: frozenset[SourceId]) -> dict[SourceId, EvidenceSource]:
+        """Return the named sources that exist, keyed by identifier."""
         ...
 
-    async def retrieval(self, retrieval_id: RetrievalId) -> EvidenceRetrieval | None: ...
-
     async def source(self, source_id: SourceId) -> EvidenceSource | None: ...
+
+    async def record_retrieval(self, retrieval: EvidenceRetrieval) -> None:
+        """Store what a user's search asked, found, and could not see."""
+        ...
+
+    async def retrieval(
+        self, *, owner_id: UserId, retrieval_id: RetrievalId
+    ) -> EvidenceRetrieval | None:
+        """Return one of the owner's past retrievals, or None for anyone else's."""
+        ...
 
 
 class UnitOfWork(Protocol):

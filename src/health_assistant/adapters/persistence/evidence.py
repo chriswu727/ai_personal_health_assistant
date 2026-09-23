@@ -1,10 +1,17 @@
-"""Storage for the curated corpus.
+"""Storage for the curated corpus and for each user's record of consulting it.
 
-No method here takes an owner. These rows are published documents, the same for
-every user, and scoping them to one would be meaningless. The owned tables and
-this one are deliberately different shapes so the distinction is visible in the
-code rather than only in a document.
+The corpus methods take no owner. Sources and passages are published documents,
+identical for every user, and scoping them to one would be meaningless. The
+owned tables and the corpus are deliberately different shapes so the
+distinction is visible in the code rather than only in a document.
+
+Retrieval history is the opposite case. A query can carry personal health
+information, so every record belongs to the user who searched, is read only
+with their identifier, and is removed with their account.
 """
+
+from collections.abc import Mapping
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -23,13 +30,13 @@ from health_assistant.domain.evidence import (
     EvidenceSource,
     RetrievedPassage,
 )
-from health_assistant.domain.identifiers import PassageId, RetrievalId, SourceId
+from health_assistant.domain.identifiers import PassageId, RetrievalId, SourceId, UserId
 
 DEFAULT_CANDIDATE_LIMIT = 200
 
 
 class SqlEvidenceRepository:
-    """Corpus persistence scoped to one transaction."""
+    """Corpus and retrieval-history persistence scoped to one transaction."""
 
     def __init__(self, connection: AsyncConnection) -> None:
         self._connection = connection
@@ -109,15 +116,34 @@ class SqlEvidenceRepository:
         )
         return Candidates(passages=found[:limit], truncated=len(found) > limit)
 
-    async def record_retrieval(self, retrieval: EvidenceRetrieval) -> None:
-        """Store what a search asked, found, and could not see.
+    async def sources(self, source_ids: frozenset[SourceId]) -> dict[SourceId, EvidenceSource]:
+        """Return the named sources that exist, keyed by identifier."""
+        if not source_ids:
+            return {}
+        result = await self._connection.execute(
+            select(evidence_sources).where(evidence_sources.c.source_id.in_(sorted(source_ids)))
+        )
+        found = (_to_source(dict(row)) for row in result.mappings())
+        return {source.source_id: source for source in found}
 
-        Result rows copy the passage rather than pointing at it, so the record
-        still describes the retrieval after the corpus is curated again.
+    async def source(self, source_id: SourceId) -> EvidenceSource | None:
+        result = await self._connection.execute(
+            select(evidence_sources).where(evidence_sources.c.source_id == source_id)
+        )
+        row = result.mappings().one_or_none()
+        return None if row is None else _to_source(dict(row))
+
+    async def record_retrieval(self, retrieval: EvidenceRetrieval) -> None:
+        """Store what a user's search asked, found, and could not see.
+
+        Result rows copy the passage and its source's provenance rather than
+        pointing at the corpus, so the record still describes the retrieval
+        after the corpus is curated again.
         """
         await self._connection.execute(
             insert(evidence_retrievals).values(
                 retrieval_id=retrieval.retrieval_id,
+                owner_id=retrieval.owner_id,
                 query=retrieval.query,
                 retrieved_at=retrieval.retrieved_at,
                 candidates_considered=retrieval.candidates_considered,
@@ -136,16 +162,26 @@ class SqlEvidenceRepository:
                     "source_id": item.passage.source_id,
                     "passage_locator": item.passage.locator,
                     "passage_text": item.passage.text,
+                    "source_title": item.source.title,
+                    "source_publisher": item.source.publisher,
+                    "source_locator": item.source.locator,
+                    "source_license": item.source.license,
+                    "source_published_on": item.source.published_on,
                     "matched_terms": sorted(item.matched_terms),
                 }
                 for item in retrieval.results
             ],
         )
 
-    async def retrieval(self, retrieval_id: RetrievalId) -> EvidenceRetrieval | None:
-        """Load a past retrieval from its own record, joining nothing."""
+    async def retrieval(
+        self, *, owner_id: UserId, retrieval_id: RetrievalId
+    ) -> EvidenceRetrieval | None:
+        """Load one of the owner's past retrievals from its own record, joining nothing."""
         header = await self._connection.execute(
-            select(evidence_retrievals).where(evidence_retrievals.c.retrieval_id == retrieval_id)
+            select(evidence_retrievals).where(
+                evidence_retrievals.c.retrieval_id == retrieval_id,
+                evidence_retrievals.c.owner_id == owner_id,
+            )
         )
         row = header.mappings().one_or_none()
         if row is None:
@@ -155,10 +191,12 @@ class SqlEvidenceRepository:
             .where(evidence_retrieval_results.c.retrieval_id == retrieval_id)
             .order_by(evidence_retrieval_results.c.rank)
         )
+        retrieved_at = row["retrieved_at"]
         return EvidenceRetrieval(
             retrieval_id=RetrievalId(row["retrieval_id"]),
+            owner_id=UserId(row["owner_id"]),
             query=row["query"],
-            retrieved_at=row["retrieved_at"],
+            retrieved_at=retrieved_at,
             results=tuple(
                 RetrievedPassage(
                     passage=EvidencePassage(
@@ -167,10 +205,21 @@ class SqlEvidenceRepository:
                         locator=item["passage_locator"],
                         text=item["passage_text"],
                     ),
+                    source=EvidenceSource(
+                        source_id=SourceId(item["source_id"]),
+                        title=item["source_title"],
+                        publisher=item["source_publisher"],
+                        locator=item["source_locator"],
+                        license=item["source_license"],
+                        # The snapshot has no recording instant of its own; the
+                        # retrieval instant is when this provenance was captured.
+                        recorded_at=retrieved_at,
+                        published_on=item["source_published_on"],
+                    ),
                     query=row["query"],
                     matched_terms=frozenset(item["matched_terms"]),
                     rank=item["rank"],
-                    retrieved_at=row["retrieved_at"],
+                    retrieved_at=retrieved_at,
                 )
                 for item in results.mappings()
             ),
@@ -178,19 +227,14 @@ class SqlEvidenceRepository:
             truncated=row["truncated"],
         )
 
-    async def source(self, source_id: SourceId) -> EvidenceSource | None:
-        result = await self._connection.execute(
-            select(evidence_sources).where(evidence_sources.c.source_id == source_id)
-        )
-        row = result.mappings().one_or_none()
-        if row is None:
-            return None
-        return EvidenceSource(
-            source_id=SourceId(row["source_id"]),
-            title=row["title"],
-            publisher=row["publisher"],
-            locator=row["locator"],
-            license=row["license"],
-            recorded_at=row["recorded_at"],
-            published_on=row["published_on"],
-        )
+
+def _to_source(row: Mapping[str, Any]) -> EvidenceSource:
+    return EvidenceSource(
+        source_id=SourceId(row["source_id"]),
+        title=row["title"],
+        publisher=row["publisher"],
+        locator=row["locator"],
+        license=row["license"],
+        recorded_at=row["recorded_at"],
+        published_on=row["published_on"],
+    )

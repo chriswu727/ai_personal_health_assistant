@@ -263,21 +263,27 @@ evidence_passages = Table(
 )
 
 
+# Unlike the corpus, retrieval history is owned. A query can carry personal
+# health information, so the record belongs to the user who searched, is read
+# only by them, and is removed with their account.
 evidence_retrievals = Table(
     "evidence_retrievals",
     metadata,
     Column("retrieval_id", Text, primary_key=True),
+    Column("owner_id", Text, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False),
     Column("query", Text, nullable=False),
     Column("retrieved_at", DateTime(timezone=True), nullable=False),
     Column("candidates_considered", Integer, nullable=False),
     Column("truncated", Boolean, nullable=False),
+    Index("ix_evidence_retrievals_owner_id", "owner_id"),
     Index("ix_evidence_retrievals_retrieved_at", "retrieved_at"),
 )
 
-# A snapshot, not a reference. The passage columns are copied rather than
-# joined, and there is deliberately no foreign key to evidence_passages: the
-# record has to survive the corpus being curated afterwards, which is the whole
-# reason for keeping it.
+# A snapshot, not a reference. The passage and its source's provenance are
+# copied rather than joined, and there is deliberately no foreign key to the
+# corpus: the record has to survive the corpus being curated afterwards, which
+# is the whole reason for keeping it, and a citation that has lost its document
+# is not a citation.
 evidence_retrieval_results = Table(
     "evidence_retrieval_results",
     metadata,
@@ -292,6 +298,11 @@ evidence_retrieval_results = Table(
     Column("source_id", Text, nullable=False),
     Column("passage_locator", Text, nullable=False),
     Column("passage_text", Text, nullable=False),
+    Column("source_title", Text, nullable=False),
+    Column("source_publisher", Text, nullable=False),
+    Column("source_locator", Text, nullable=False),
+    Column("source_license", Text, nullable=False),
+    Column("source_published_on", Date, nullable=True),
     Column("matched_terms", POSTGRES_ARRAY(Text), nullable=False),
     CheckConstraint("rank >= 1", name="ck_evidence_retrieval_results_rank_positive"),
 )

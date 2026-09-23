@@ -1,9 +1,14 @@
 """Curated public knowledge, and a deterministic way to retrieve it.
 
-Two things separate this from personal memory. It is public: no user owns a
-source or a passage, and nothing here is scoped to an owner. And it is
-untrusted: a passage is text somebody else wrote, so it is data that may be
+Two things separate the corpus from personal memory. It is public: no user
+owns a source or a passage, and nothing about them is scoped to an owner. And it
+is untrusted: a passage is text somebody else wrote, so it is data that may be
 quoted and cited, never an instruction and never a reason to act.
+
+What a user *asked* is a different matter. A query can carry personal health
+information, so the record of a retrieval belongs to the user who made it,
+is read only by them, and leaves with their account. The corpus is shared; the
+history of consulting it is not.
 
 Ranking is a pure function of the corpus and the query. That is the point: the
 same question against the same corpus returns the same passages in the same
@@ -13,7 +18,7 @@ trust. The scoring itself is a deliberately plain baseline, described in
 """
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -22,6 +27,7 @@ from health_assistant.domain.identifiers import (
     PassageId,
     RetrievalId,
     SourceId,
+    UserId,
     require_identifier,
 )
 from health_assistant.domain.scheduling import require_utc
@@ -89,17 +95,21 @@ class EvidencePassage:
 class RetrievedPassage:
     """A passage as it was returned for one query at one instant.
 
-    This is the provenance record: what matched, how well, in what position, and
-    when. It is what a citation later points at.
+    This is the provenance record: what matched, how well, in what position,
+    when, and from which document. The source travels with the passage because
+    a citation that names a passage but has lost its document is not a citation.
     """
 
     passage: EvidencePassage
+    source: EvidenceSource
     query: str
     matched_terms: frozenset[str]
     rank: int
     retrieved_at: datetime
 
     def __post_init__(self) -> None:
+        if self.source.source_id != self.passage.source_id:
+            raise ValidationError("a retrieved passage must carry its own source")
         if self.rank < 1:
             raise ValidationError("rank starts at 1")
         if not self.matched_terms:
@@ -119,6 +129,7 @@ def rank_passages(
     passages: Iterable[EvidencePassage],
     query: str,
     *,
+    sources: Mapping[SourceId, EvidenceSource],
     at: datetime,
     limit: int = 10,
 ) -> tuple[RetrievedPassage, ...]:
@@ -128,6 +139,9 @@ def rank_passages(
     then by passage identifier. The last key is what makes the result total:
     without it two equally good passages could come back in either order and a
     citation would not be reproducible.
+
+    ``sources`` must cover every passage that matches. A passage whose document
+    is unknown cannot be cited, so it is an error here rather than a blank later.
     """
     if limit < 1:
         raise ValidationError("limit must be at least 1")
@@ -143,16 +157,24 @@ def rank_passages(
     scored.sort(key=lambda entry: (-entry[0][0], -entry[0][1], entry[1].passage_id))
 
     instant = require_utc(at, "at")
-    return tuple(
-        RetrievedPassage(
-            passage=passage,
-            query=query,
-            matched_terms=terms & passage.terms,
-            rank=position,
-            retrieved_at=instant,
+    results = []
+    for position, (_, passage) in enumerate(scored[:limit], start=1):
+        source = sources.get(passage.source_id)
+        if source is None:
+            raise ValidationError(
+                f"passage {passage.passage_id!r} has no source {passage.source_id!r}"
+            )
+        results.append(
+            RetrievedPassage(
+                passage=passage,
+                source=source,
+                query=query,
+                matched_terms=terms & passage.terms,
+                rank=position,
+                retrieved_at=instant,
+            )
         )
-        for position, (_, passage) in enumerate(scored[:limit], start=1)
-    )
+    return tuple(results)
 
 
 def corpus_terms(passages: Sequence[EvidencePassage]) -> frozenset[str]:
@@ -181,9 +203,12 @@ class EvidenceRetrieval:
     Kept so that a citation can be audited later: without a record of what was
     retrieved at the time, a claim made from it cannot be checked once the
     corpus moves on.
+
+    Owned by the user who searched. The corpus is public; the query is not.
     """
 
     retrieval_id: RetrievalId
+    owner_id: UserId
     query: str
     retrieved_at: datetime
     results: tuple[RetrievedPassage, ...]
@@ -194,6 +219,7 @@ class EvidenceRetrieval:
         object.__setattr__(
             self, "retrieval_id", require_identifier(self.retrieval_id, "retrieval_id")
         )
+        object.__setattr__(self, "owner_id", require_identifier(self.owner_id, "owner_id"))
         object.__setattr__(self, "retrieved_at", require_utc(self.retrieved_at, "retrieved_at"))
         if self.candidates_considered < len(self.results):
             raise ValidationError("more results than candidates considered")

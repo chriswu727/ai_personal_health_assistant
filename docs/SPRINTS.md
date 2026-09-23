@@ -440,7 +440,7 @@ credentials, and any paid call in the default suite.
 
 | Task | Deliverable | Acceptance criteria | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| S3-01 | Evidence storage and deterministic retrieval | Sources and passages are stored with publisher, publication date, locator, and the permission under which they may be quoted; every retrieval is recorded with its query, time, results, and whether it saw the whole corpus; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call. **Narrowed**: curating an actual corpus moved to S3-10 | In Progress | `domain/evidence.py`, `adapters/persistence/evidence.py`, `application/evidence.py`; migration 0004 |
+| S3-01 | Evidence storage and deterministic retrieval | Sources and passages are stored with publisher, publication date, locator, and the permission under which they may be quoted; every retrieval is recorded with its query, time, results, the provenance of each cited source, and whether it saw the whole corpus; that history is owned by the user who searched, readable only by them, and removed with their account; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call. **Narrowed**: curating an actual corpus moved to S3-10, which is in the sprint gate | In Progress | `domain/evidence.py`, `adapters/persistence/evidence.py`, `application/evidence.py`; migration 0004 |
 | S3-02 | Citation support | A claim links to the passages that support it, and a passage that does not support it is rejected; a resolvable URL alone never counts as support; missing or conflicting evidence is reported rather than smoothed over | Planned | Pending |
 | S3-03 | Editable personal memory | Confirmed facts, temporary observations, goals, and unconfirmed inferences are distinct kinds; each carries provenance, observed and recorded time, validity, and confirmation status; a user can correct and delete, and deletion also removes derived retrieval records and cached context | Planned | Pending |
 | S3-04 | Contradiction and expiry | A new fact that contradicts a stored one surfaces for confirmation instead of overwriting it; an expired fact stops applying without being deleted; an unconfirmed inference never becomes a hard constraint without the user, which the domain already requires and storage must not weaken | Planned | Pending |
@@ -451,10 +451,12 @@ credentials, and any paid call in the default suite.
 | S3-09 | Review and documentation | Implemented contracts, verification separated by where it ran, limitations, and the Sprint 4 breakdown | Planned | Pending |
 | S3-10 | Curated corpus and loading path | A small set of named, permitted sources with their licences recorded, and a documented command that loads them reproducibly into an empty database; synthetic fixtures stay for the offline tests | **Blocked** | Needs the maintainer to name which sources the project may quote and confirm their licence terms. Not a technical blocker |
 
-Definition of Done: S3-01 through S3-09 pass acceptance, changes are on main, and
-the review records evidence. Evaluation results must state which ran against a
-deterministic substitute and which against a live model. No clinical claim
-follows from any of it.
+Definition of Done: S3-01 through S3-10 pass acceptance, changes are on main, and
+the review records evidence. S3-10 is in the gate because S3-01 was narrowed to
+make room for it; the sprint does not close with an empty corpus unless a
+deferral of S3-10 is separately authorized and recorded here as such. Evaluation
+results must state which ran against a deterministic substitute and which
+against a live model. No clinical claim follows from any of it.
 
 Scope change, recorded rather than absorbed: S3-01 originally covered both the
 storage and retrieval machinery and the curation of a real corpus. Only the first
@@ -486,17 +488,39 @@ now asserted in a test and recorded in ADR 0007 and the README rather than left
 for a reader to discover. Fixing it means a better ranker, which ADR 0007 defers
 until an evaluation gives a number to improve.
 
+### Review round 2, S3-01
+
+Three findings on the retrieval records added in round 1. None needed a database
+to see; each was a contract gap visible from the schema and the repository.
+
+| Finding | Gap | Resolution |
+| --- | --- | --- |
+| Retrieval history had no owner | The corpus is rightly unowned, but the record stores the user's raw query, which can carry personal health information; nothing scoped it to a user, so isolation and account deletion had no hold on it | `evidence_retrievals` carries `owner_id` with cascade from `users`; every retrieval names its owner; reading history requires the owner; a cross-owner read returns nothing and deleting the user removes the history while the corpus stays |
+| The snapshot kept the passage but lost its document | Results copied passage text and a source identifier only, so deleting or re-curating a source left a historical citation unable to say what document it quoted | Each result row copies the source's title, publisher, locator, licence, and publication date; a regression overwrites the source and another deletes it, and both read the original provenance back |
+| S3-10 was outside the completion gate | S3-01 had been narrowed to make room for S3-10, but the Definition of Done still named only S3-01 through S3-09, so the sprint could close with an empty corpus | The gate is S3-01 through S3-10, and a deferral of S3-10 must be separately authorized and recorded |
+
+The first was the one that mattered. I had reasoned "the corpus is public, so evidence
+is unowned" and let that conclusion cover a table it did not describe. The
+corpus is public; the question a person brought to it is theirs.
+
+Migration 0005 is amended rather than followed by a 0006, because it has never
+been on main. The local database had the earlier shape applied, and the amended
+downgrade could not remove an index that shape never had; the database was
+dropped and re-migrated from empty, which is the second time amending a
+migration has needed that and is recorded so the next person expects it.
+
 ### Verification, S3-01
 
 | Check | Where | Result |
 | --- | --- | --- |
 | Format, lint, mypy strict | Local | Pass, 56 source files, native platform and `win32` |
-| Offline tests | Local | Pass, 115 tests |
-| Database tests | Local | Pass, 59 tests against PostgreSQL 17 |
+| Offline tests | Local | Pass, 118 tests |
+| Database tests | Local | Pass, 62 tests against PostgreSQL 17 |
 | Build | Local | Pass, sdist and wheel |
 
-174 tests pass locally with the database configured, 115 with 59 skipped without
-it. CI results are recorded on the pull request.
+180 tests pass locally with the database configured, 118 with 62 skipped without
+it. The database was recreated from empty first, so every migration including
+the amended 0005 was applied fresh. CI results are recorded on the pull request.
 
 Determinism is tested rather than asserted: the same corpus is shuffled twenty
 times under a seeded generator and ranked, and the order does not move. A
@@ -504,8 +528,8 @@ separate test covers the tiebreak that makes the order total, because two
 equally scored passages are the case where a non-reproducible citation would
 come from.
 
-The corpus tables carry no owner column, which a test asserts structurally
-against the schema rather than trusting the code to have left it out.
+The corpus tables carry no owner column and the history table does, which a
+test asserts structurally against the schema rather than trusting the code.
 
 Not established: retrieval quality. The ranker matches words and nothing more,
 which [ADR 0007](decisions/0007-deterministic-retrieval.md) records along with
