@@ -6,12 +6,11 @@ This file is the source of truth for delivery status. The [roadmap](ROADMAP.md) 
 
 - Completed: Sprint 0, the repository and design foundation. Sprint 1, the tested
   domain slice, merged in [pull request #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1).
-- Active sprint: Sprint 2, persistence and ownership enforcement. All three
-  implementation parts are merged: plan storage with ownership and ancestry as
-  `5deeaa2`, constraint, approval, and operation storage with worker leases as
-  `ecafaf3`, and restart recovery with adversarial path probes as `4e3f60e`.
-  S2-08, this closing change, is the only work left and the sprint stays In
-  Progress until it is on main.
+- Completed: Sprint 2, persistence and ownership enforcement, across four pull
+  requests and closed by `83d4ce6`.
+- Active sprint: Sprint 3, evidence and memory. S3-01, the evidence corpus and
+  retrieval, is underway; S3-02 through S3-09 are Planned.
+- Open milestone: M2 is partly met. Its API and identity criteria are Sprint 4's.
 - Application release: none. There is no runnable application or service.
 
 ## Working method
@@ -37,8 +36,8 @@ A sprint closes only when its committed acceptance criteria are met. Record the 
 | --- | --- | --- | --- | --- |
 | 0 | Establish the public project foundation | Done | None | Published documents and repository checks |
 | 1 | Model plans, approvals, and operation lifecycles | Done | 0 | [Merged in #1](https://github.com/chriswu727/ai_personal_health_assistant/pull/1); 98 offline tests, local and CI checks green |
-| 2 | Persist and isolate user workflows | In Progress | 1 | Migrations, ownership-enforcing repositories, concurrency and recovery tests |
-| 3 | Add grounded reasoning and personal memory | Planned | 2 | Retrieval, memory, and orchestration evaluations |
+| 2 | Persist and isolate user workflows | Done | 1 | [Merged across #2, #3, #4, #5](https://github.com/chriswu727/ai_personal_health_assistant/pull/5); 152 tests, migrations, concurrency and crash recovery |
+| 3 | Add grounded reasoning and personal memory | In Progress | 2 | Retrieval, memory, and orchestration evaluations |
 | 4 | Deliver the conversational web experience | Planned | 3 | Accessible journeys and cancellation/reconnect checks |
 | 5 | Execute verified calendar changes | Planned | 4 | Live test-account flow and ambiguous-write recovery |
 | 6 | Complete the exercise, nutrition, and sleep loop | Planned | 5 | Domain evaluations, progress records, and weekly adjustments |
@@ -178,7 +177,7 @@ Carryover: none. Blockers: none.
 
 ## Sprint 2: Persistent service
 
-Status: In Progress. S2-01 through S2-07 are Done; S2-08 is this change.
+Status: Done. All of S2-01 through S2-08 are Done, closed by `83d4ce6`.
 
 Goal: give the domain a durable home in which ownership is enforced on every
 access path and concurrent revisions cannot silently overwrite each other.
@@ -196,7 +195,7 @@ delivery, model providers, calendar credentials, and deployment infrastructure.
 | S2-05 | Durable operations and worker leases | Persist the operation lifecycle; claim work with a lease so two workers cannot hold one operation; an expired lease returns work for reconciliation rather than marking it failed | Done | `adapters/persistence/operations.py`, `application/worker.py`; lease and claim tests |
 | S2-06 | Restart and transaction boundaries | A failure mid-transaction leaves no partial plan version or half-queued operation; work in flight when a worker dies is recoverable after restart | Done | `tests/integration/test_restart_recovery.py`; a real worker process killed mid-flight |
 | S2-07 | Adversarial path probes | Alongside per-unit tests, probes attempt to reach a protected state by an unintended path: cross-user access, a revision that skips the version check, and a claim that bypasses authorization. Carried from the Sprint 1 retrospective | Done | `tests/integration/test_adversarial_paths.py`; migration 0003 hardening |
-| S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | In Progress | This change: the sprint review below, the Sprint 3 breakdown, and the roadmap correction |
+| S2-08 | Review and documentation | Record the implemented contracts, verification evidence separated by where it ran, limitations, and the Sprint 3 breakdown | Done | This change: the sprint review below, the Sprint 3 breakdown, and the roadmap correction |
 
 Definition of Done: S2-01 through S2-08 pass acceptance, changes are on main, and
 the review records evidence. Integration results must state which ran locally and
@@ -429,7 +428,7 @@ Carryover: none within the sprint. Blockers: none.
 
 ## Sprint 3: Evidence and memory
 
-Status: Planned.
+Status: In Progress.
 
 Goal: let a model propose a plan without letting it decide whether that plan is
 safe, whether a claim is supported, or what the user actually said.
@@ -441,7 +440,7 @@ credentials, and any paid call in the default suite.
 
 | Task | Deliverable | Acceptance criteria | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| S3-01 | Evidence corpus and retrieval | Curated, permitted sources stored with source, passage, retrieval time, and applicable publication metadata; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call | Planned | Pending |
+| S3-01 | Evidence storage and deterministic retrieval | Sources and passages are stored with publisher, publication date, locator, and the permission under which they may be quoted; every retrieval is recorded with its query, time, results, the provenance of each cited source, and whether it saw the whole corpus; that history is owned by the user who searched, readable only by them, and removed with their account; retrieval is deterministic for a fixed corpus and query; the default suite makes no network call. **Narrowed**: curating an actual corpus moved to S3-10, which is in the sprint gate | In Progress | `domain/evidence.py`, `adapters/persistence/evidence.py`, `application/evidence.py`; migration 0004 |
 | S3-02 | Citation support | A claim links to the passages that support it, and a passage that does not support it is rejected; a resolvable URL alone never counts as support; missing or conflicting evidence is reported rather than smoothed over | Planned | Pending |
 | S3-03 | Editable personal memory | Confirmed facts, temporary observations, goals, and unconfirmed inferences are distinct kinds; each carries provenance, observed and recorded time, validity, and confirmation status; a user can correct and delete, and deletion also removes derived retrieval records and cached context | Planned | Pending |
 | S3-04 | Contradiction and expiry | A new fact that contradicts a stored one surfaces for confirmation instead of overwriting it; an expired fact stops applying without being deleted; an unconfirmed inference never becomes a hard constraint without the user, which the domain already requires and storage must not weaken | Planned | Pending |
@@ -450,16 +449,92 @@ credentials, and any paid call in the default suite.
 | S3-07 | Orchestration to a validated plan | A proposal becomes a typed plan version only after the deterministic constraint validator accepts it; a proposal violating a hard constraint cannot reach approval by any path; orchestration is bounded by deadline and budget and records why it stopped | Planned | Pending |
 | S3-08 | Held-out evaluations | Development fixtures are separate from held-out sets; each run records commit, environment, dataset version, model version, configuration, repetition count, denominator, failures, and cost; variability is reported for nondeterministic runs; an LLM judge is supplementary evidence and never the sole authority | Planned | Pending |
 | S3-09 | Review and documentation | Implemented contracts, verification separated by where it ran, limitations, and the Sprint 4 breakdown | Planned | Pending |
+| S3-10 | Curated corpus and loading path | A small set of named, permitted sources with their licences recorded, and a documented command that loads them reproducibly into an empty database; synthetic fixtures stay for the offline tests | **Blocked** | Needs the maintainer to name which sources the project may quote and confirm their licence terms. Not a technical blocker |
 
-Definition of Done: S3-01 through S3-09 pass acceptance, changes are on main, and
-the review records evidence. Evaluation results must state which ran against a
-deterministic substitute and which against a live model. No clinical claim
-follows from any of it.
+Definition of Done: S3-01 through S3-10 pass acceptance, changes are on main, and
+the review records evidence. S3-10 is in the gate because S3-01 was narrowed to
+make room for it; the sprint does not close with an empty corpus unless a
+deferral of S3-10 is separately authorized and recorded here as such. Evaluation
+results must state which ran against a deterministic substitute and which
+against a live model. No clinical claim follows from any of it.
+
+Scope change, recorded rather than absorbed: S3-01 originally covered both the
+storage and retrieval machinery and the curation of a real corpus. Only the first
+is delivered. Choosing which health sources the project may quote, and under what
+licence, is a maintainer decision rather than an implementation detail, so it is
+split into S3-10 and marked Blocked with the decision it waits on. A fresh
+install therefore has an empty corpus, and nothing in this sprint should be read
+as claiming otherwise.
 
 Carried from the Sprint 2 retrospective: orchestration reads memory and evidence
 and then acts on them, which is the same staleness shape that produced every
 defect in Sprint 2. Name the window between reading and acting in the design
 before writing the code, and test the interleaving rather than the endpoints.
+
+### Review round 1, S3-01
+
+Four findings, all in this change. Two were reproduced against PostgreSQL first:
+
+| Finding | Reproduced behavior | Resolution |
+| --- | --- | --- |
+| Retrieval was never recorded | The query, time, and ranked results existed only in the returned object, so a past citation could not be audited once the corpus moved on | Every search writes a record whose results copy the passage rather than pointing at it, so it survives later curation |
+| The candidate bound cut silently | 200 passages matching one term crowded out a passage matching three; narrowing orders by identifier, so the best passage was discarded and the caller could not tell | The bound is detected by fetching one extra row and reported on the result and in the record |
+| S3-01 claimed a curated corpus | Only storage, retrieval, and synthetic fixtures were delivered; a fresh install has no evidence at all | S3-01 narrowed to the machinery; curating real sources split into S3-10 and Blocked on a maintainer decision |
+| The handoff contradicted itself | One section described retrieval as implemented while another still said it did not exist | Reconciled, and the limitations now name the empty corpus and the ranker's weaknesses |
+
+Writing the tests surfaced a fifth thing nobody reported: the scorer counts a
+common word like "and" as a match, so a wordy query ranks partly by noise. It is
+now asserted in a test and recorded in ADR 0007 and the README rather than left
+for a reader to discover. Fixing it means a better ranker, which ADR 0007 defers
+until an evaluation gives a number to improve.
+
+### Review round 2, S3-01
+
+Three findings on the retrieval records added in round 1. None needed a database
+to see; each was a contract gap visible from the schema and the repository.
+
+| Finding | Gap | Resolution |
+| --- | --- | --- |
+| Retrieval history had no owner | The corpus is rightly unowned, but the record stores the user's raw query, which can carry personal health information; nothing scoped it to a user, so isolation and account deletion had no hold on it | `evidence_retrievals` carries `owner_id` with cascade from `users`; every retrieval names its owner; reading history requires the owner; a cross-owner read returns nothing and deleting the user removes the history while the corpus stays |
+| The snapshot kept the passage but lost its document | Results copied passage text and a source identifier only, so deleting or re-curating a source left a historical citation unable to say what document it quoted | Each result row copies the source's title, publisher, locator, licence, and publication date; a regression overwrites the source and another deletes it, and both read the original provenance back |
+| S3-10 was outside the completion gate | S3-01 had been narrowed to make room for S3-10, but the Definition of Done still named only S3-01 through S3-09, so the sprint could close with an empty corpus | The gate is S3-01 through S3-10, and a deferral of S3-10 must be separately authorized and recorded |
+
+The first was the one that mattered. I had reasoned "the corpus is public, so evidence
+is unowned" and let that conclusion cover a table it did not describe. The
+corpus is public; the question a person brought to it is theirs.
+
+Migration 0005 is amended rather than followed by a 0006, because it has never
+been on main. The local database had the earlier shape applied, and the amended
+downgrade could not remove an index that shape never had; the database was
+dropped and re-migrated from empty, which is the second time amending a
+migration has needed that and is recorded so the next person expects it.
+
+### Verification, S3-01
+
+| Check | Where | Result |
+| --- | --- | --- |
+| Format, lint, mypy strict | Local | Pass, 56 source files, native platform and `win32` |
+| Offline tests | Local | Pass, 118 tests |
+| Database tests | Local | Pass, 62 tests against PostgreSQL 17 |
+| Build | Local | Pass, sdist and wheel |
+
+180 tests pass locally with the database configured, 118 with 62 skipped without
+it. The database was recreated from empty first, so every migration including
+the amended 0005 was applied fresh. CI results are recorded on the pull request.
+
+Determinism is tested rather than asserted: the same corpus is shuffled twenty
+times under a seeded generator and ranked, and the order does not move. A
+separate test covers the tiebreak that makes the order total, because two
+equally scored passages are the case where a non-reproducible citation would
+come from.
+
+The corpus tables carry no owner column and the history table does, which a
+test asserts structurally against the schema rather than trusting the code.
+
+Not established: retrieval quality. The ranker matches words and nothing more,
+which [ADR 0007](decisions/0007-deterministic-retrieval.md) records along with
+what would justify replacing it. S3-02 is what keeps weak retrieval from turning
+into an unsupported claim.
 
 Review: pending. Blockers: none identified. Carryover: none.
 

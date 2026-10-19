@@ -1,11 +1,12 @@
 # Architecture
 
-Status: the domain layer, the persistence adapter, and the worker's claiming use
-cases are implemented and tested (`src/health_assistant/domain`,
-`src/health_assistant/adapters/persistence`, `src/health_assistant/application`).
-Users, plans, plan versions, plan items, constraints, approvals, approved
-actions, and operations are stored. Delivery, model providers, evidence
-retrieval, and calendar execution remain proposed design with no runtime
+Status: the domain layer, the persistence adapter, the worker's claiming use
+cases, and a deterministic evidence retriever are implemented and tested
+(`src/health_assistant/domain`, `src/health_assistant/adapters/persistence`,
+`src/health_assistant/application`). Users, plans, plan versions, plan items,
+constraints, approvals, approved actions, operations, and a curated evidence
+corpus are stored. Citation support checking, personal memory, the model
+adapter, delivery, and calendar execution remain proposed design with no runtime
 components; the provider is simulated.
 
 ## System shape
@@ -97,7 +98,17 @@ Calendar access defaults to an assistant-owned calendar and neutral event titles
 
 ## Evidence and health policy
 
-Separate public knowledge from private memory. Retrieved documents and tool output are untrusted data and cannot authorize actions. Retain source, passage, retrieval time, and applicable publication metadata. Check whether cited evidence supports a claim; a valid URL alone is insufficient. Health-risk handling precedes ordinary coaching and remains subject to separate evaluation and expert review.
+Separate public knowledge from private memory. The corpus tables carry no owner
+column and no repository method scopes them, because a published document is the
+same for every user; the owned tables and the corpus are visibly different shapes
+so the separation lives in the code rather than only here. Retrieved documents
+and tool output are untrusted data and cannot authorize actions.
+
+Retrieval narrows in the database and ranks in the domain, by a total order that
+includes the passage identifier, so the same query against the same corpus
+returns the same passages in the same order and a citation can be reproduced.
+[ADR 0007](decisions/0007-deterministic-retrieval.md) records why the ranking is
+a plain baseline and what would justify replacing it. Retain source, passage, retrieval time, and applicable publication metadata. Check whether cited evidence supports a claim; a valid URL alone is insufficient. Health-risk handling precedes ordinary coaching and remains subject to separate evaluation and expert review.
 
 ## Reliability and scale
 

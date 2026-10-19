@@ -84,6 +84,19 @@ enforced in code and covered by offline tests:
   every read to the owner, so a request for another user's data returns nothing.
   A plan version must be written onto its own stored parent, so a lost update is
   a rejected write rather than a silent overwrite.
+- **A citation can be reproduced.** The curated corpus is public knowledge, with
+  no owner, stored with the source, publisher, publication date, locator, and
+  the permission under which it may be quoted. Retrieval narrows in the database
+  and ranks in the domain by a total order, so the same query returns the same
+  passages in the same order anywhere, and the record says whether the search saw
+  the whole corpus or stopped early. Each record keeps the cited document's
+  provenance with it, so curating the corpus later cannot rewrite the basis of a
+  past answer, and the record belongs to the user who asked, because a question
+  can say something about them. The ranking is a plain word-overlap
+  baseline: it will not find a passage about peanuts from a question about satay,
+  and it weighs a word like "and" as heavily as the subject of the question.
+  Checking that a passage actually supports a claim is separate work, still to
+  come.
 - **Queued work is re-authorized against current records before it runs.** A
   worker takes the oldest operation no other worker holds, then loads that
   operation's owner's **current** plan and its approval and asks the domain
@@ -124,7 +137,7 @@ Run every quality gate exactly as CI runs it:
 ```
 
 Database tests need PostgreSQL and are skipped without it; see
-[Contributing](CONTRIBUTING.md). There is no application to start. Sprint 2's
-implementation is merged, covering storage, ownership, worker claiming, and
-restart recovery; its closing review is still in flight. Sprint 3 adds evidence
-retrieval, editable memory, and a bounded model adapter.
+[Contributing](CONTRIBUTING.md). There is no application to start. Sprint 2 is
+complete: storage, ownership, worker claiming, restart recovery. Sprint 3 is
+under way, starting with the evidence corpus; editable memory, a bounded model
+adapter, and orchestration to a validated plan follow.

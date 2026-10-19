@@ -5,7 +5,7 @@ so that test outcomes never depend on the wall clock.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from health_assistant.domain.actions import ApprovedAction, OperationKind
 from health_assistant.domain.constraints import (
@@ -15,11 +15,14 @@ from health_assistant.domain.constraints import (
     ConstraintSeverity,
     ConstraintSource,
 )
+from health_assistant.domain.evidence import EvidencePassage, EvidenceSource
 from health_assistant.domain.identifiers import (
     ConstraintId,
     OperationId,
+    PassageId,
     PlanId,
     PlanItemId,
+    SourceId,
     UserId,
 )
 from health_assistant.domain.plans import (
@@ -139,3 +142,36 @@ def make_scope(
 ) -> frozenset[ApprovedAction]:
     """Return an approval scope covering one external action per named item."""
     return frozenset(make_action(item_id, kind, compensates) for item_id in item_ids)
+
+
+def make_source(
+    source_id: str = "source-1",
+    *,
+    title: str = "Everyday activity and sleep, synthetic edition",
+    publisher: str = "Synthetic Health Press",
+    locator: str = "https://example.invalid/synthetic/activity",
+    license_note: str = "synthetic fixture, redistributable",
+    published_on: date | None = None,
+    recorded_at: datetime = BASE_INSTANT,
+) -> EvidenceSource:
+    """A synthetic source. Nothing here quotes a real document."""
+    return EvidenceSource(
+        source_id=SourceId(source_id),
+        title=title,
+        publisher=publisher,
+        locator=locator,
+        license=license_note,
+        recorded_at=recorded_at,
+        published_on=published_on,
+    )
+
+
+def make_passage(
+    passage_id: str, text: str, *, source_id: str = "source-1", locator: str = "section-1"
+) -> EvidencePassage:
+    return EvidencePassage(
+        passage_id=PassageId(passage_id),
+        source_id=SourceId(source_id),
+        locator=locator,
+        text=text,
+    )

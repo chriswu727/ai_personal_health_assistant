@@ -5,7 +5,20 @@ from typing import Protocol
 
 from health_assistant.domain.approvals import Approval
 from health_assistant.domain.constraints import Constraint, ConstraintSet
-from health_assistant.domain.identifiers import ApprovalId, OperationId, PlanId, UserId
+from health_assistant.domain.evidence import (
+    Candidates,
+    EvidencePassage,
+    EvidenceRetrieval,
+    EvidenceSource,
+)
+from health_assistant.domain.identifiers import (
+    ApprovalId,
+    OperationId,
+    PlanId,
+    RetrievalId,
+    SourceId,
+    UserId,
+)
 from health_assistant.domain.operations import ToolOperation
 from health_assistant.domain.plans import PlanVersion
 
@@ -100,6 +113,45 @@ class OperationRepository(Protocol):
     ) -> tuple[ToolOperation, ...]: ...
 
 
+class EvidenceRepository(Protocol):
+    """Storage for the curated corpus and for each user's retrieval history.
+
+    The corpus methods take no owner: sources and passages are published
+    documents, identical for every user, and the absence of an owner parameter
+    there is the point rather than an omission. Retrieval history is owned, and
+    reading it requires the owner, because a query can say something about the
+    person who asked it.
+    """
+
+    async def add_source(self, source: EvidenceSource) -> None: ...
+
+    async def add_passage(self, passage: EvidencePassage) -> None: ...
+
+    async def candidates(self, terms: frozenset[str], *, limit: int = 200) -> Candidates:
+        """Return passages sharing at least one term, and say if the bound cut in.
+
+        This narrows, it does not rank, so a cutoff can discard the passage that
+        would have ranked first. The caller is told rather than left to assume.
+        """
+        ...
+
+    async def sources(self, source_ids: frozenset[SourceId]) -> dict[SourceId, EvidenceSource]:
+        """Return the named sources that exist, keyed by identifier."""
+        ...
+
+    async def source(self, source_id: SourceId) -> EvidenceSource | None: ...
+
+    async def record_retrieval(self, retrieval: EvidenceRetrieval) -> None:
+        """Store what a user's search asked, found, and could not see."""
+        ...
+
+    async def retrieval(
+        self, *, owner_id: UserId, retrieval_id: RetrievalId
+    ) -> EvidenceRetrieval | None:
+        """Return one of the owner's past retrievals, or None for anyone else's."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """One transactional boundary exposing the repositories it spans."""
 
@@ -117,3 +169,6 @@ class UnitOfWork(Protocol):
 
     @property
     def operations(self) -> OperationRepository: ...
+
+    @property
+    def evidence(self) -> EvidenceRepository: ...

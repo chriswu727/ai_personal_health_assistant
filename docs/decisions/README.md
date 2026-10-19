@@ -15,3 +15,4 @@ to change its decision; a later record supersedes it and says so.
 | [0004](0004-persistence-stack.md) | Persistence stack and database test strategy | Accepted |
 | [0005](0005-worker-claiming.md) | Worker claiming, and the one access path that is not owner-scoped | Accepted |
 | [0006](0006-invariants-below-the-domain.md) | Which invariants are repeated below the domain | Accepted |
+| [0007](0007-deterministic-retrieval.md) | A deterministic baseline retriever | Accepted |

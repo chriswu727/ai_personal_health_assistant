@@ -23,9 +23,13 @@ from health_assistant.adapters.persistence import (
 )
 
 URL_VARIABLE = "HEALTH_ASSISTANT_TEST_DATABASE_URL"
+# The evidence tables are listed separately because nothing cascades to them:
+# they are public knowledge with no owner to cascade from.
 OWNED_TABLES = (
     "tool_operations, approval_actions, approvals, user_constraints, "
-    "plan_items, plan_versions, plans, users"
+    "plan_items, plan_versions, plans, users, "
+    "evidence_retrieval_results, evidence_retrievals, "
+    "evidence_passages, evidence_sources"
 )
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
