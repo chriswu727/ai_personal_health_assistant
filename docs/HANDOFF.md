@@ -24,8 +24,10 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
 
 DOC-01 updates the README and product scope to describe the intended assistant.
 Implementation status, limitations, and the existing sprint plan are preserved.
-Relative-link review and `git diff --check` passed. Publication is pending.
-No application tests or live provider calls were run for this prose-only change.
+DOC-01 is Done, published as `6092190`. Relative-link review and
+`git diff --check` passed. The unchanged application checks also passed in
+[CI](https://github.com/chriswu727/ai_personal_health_assistant/actions/runs/39291723978).
+Application tests were not rerun locally, and no live provider calls were made.
 
 ## Previous implementation handoff
 
