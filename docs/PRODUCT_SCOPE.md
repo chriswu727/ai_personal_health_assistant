@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build a public engineering portfolio demonstrating a reliable consumer AI assistant. Monetization is not a phase-one goal. The long-term product is a single entry point for personal health questions, records, planning, and authorized actions; response depth depends on evidence, risk, and available integrations.
+Build a reliable consumer AI assistant. Monetization is not a phase-one goal. The long-term product is a single entry point for personal health questions, records, planning, and authorized actions; response depth depends on evidence, risk, and available integrations.
 
 ## Initial audience
 

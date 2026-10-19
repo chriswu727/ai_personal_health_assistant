@@ -20,7 +20,15 @@ This file provides session context; [SPRINTS.md](SPRINTS.md) remains the source 
   format, lint, strict type, test, and build gates running locally through
   `./scripts/verify.sh` and in GitHub Actions on `ubuntu-latest`.
 
-## Latest change
+## Documentation maintenance — 2026-10-19
+
+DOC-01 updates the README and product scope to describe the intended assistant.
+Implementation status, limitations, and the existing sprint plan are preserved.
+Relative-link review and `git diff --check` passed. Publication is pending.
+No application tests or live provider calls were run for this prose-only change.
+
+## Previous implementation handoff
+
 
 Closed Sprint 2 with its review and retrospective, refined Sprint 3 into S3-01
 through S3-09 with acceptance criteria, and corrected the roadmap where a

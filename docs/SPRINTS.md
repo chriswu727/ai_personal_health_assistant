@@ -495,3 +495,9 @@ At each sprint close, record:
 - Unverified behavior and known limitations.
 - Scope changes, blockers, and explicitly assigned carryover.
 - A short retrospective and the next sprint's concrete tasks.
+
+## Documentation maintenance
+
+| Task | Deliverable | Acceptance criteria | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| DOC-01 | Clarify the project purpose | README and product scope describe the intended assistant; implementation status and limitations remain accurate; relative links and whitespace checks pass | In Progress | Relative-link review and `git diff --check` passed; publication pending |

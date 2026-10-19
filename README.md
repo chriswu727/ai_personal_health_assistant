@@ -6,7 +6,7 @@ A personal AI assistant for evidence-informed exercise, nutrition, sleep, and da
 application, web interface, calendar integration, clinical validation, or
 deployed service yet.**
 
-This engineering portfolio project explores a practical question: how can an assistant turn a changing personal goal into an actionable plan while preserving user constraints, explaining its evidence, and recovering correctly when an external service fails?
+This project explores a practical question: how can an assistant turn a changing personal goal into an actionable plan while preserving user constraints, explaining its evidence, and recovering correctly when an external service fails?
 
 ## The intended experience
 
